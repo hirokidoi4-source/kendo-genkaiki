@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>試合結果入力 - 少年剣道大会</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .score-box {
+            width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;
+            border: 2px solid #e5e7eb; border-radius: 8px; font-weight: bold; font-size: 1.1rem;
+            cursor: pointer; transition: all 0.2s; background-color: white;
+        }
+        .score-box:hover { border-color: #6366f1; background-color: #e0e7ff; }
+        .score-box.filled { border-color: #4f46e5; background-color: #e0e7ff; color: #3730a3; }
+        .score-box.draw { border-color: #14b8a6; background-color: #ccfbf1; color: #0f766e; }
+        .score-box.senshu { border-color: #ea580c; background-color: #fff7ed; color: #c2410c; }
+        
+        /* 選択中の対戦カードを目立たせる */
+        .selected-match-card {
+            border: 3px solid #4f46e5 !important;
+            background-color: #eef2ff !important;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans p-4 md:p-6">
+
+    <div class="max-w-5xl mx-auto">
+        <div class="flex justify-between items-end mb-4 border-b pb-2">
+            <h1 class="text-xl font-bold text-indigo-900">📝 試合結果入力・コート進行パネル</h1>
+            <a href="/admin.html" class="text-xs font-bold text-gray-500 hover:text-indigo-600 transition">◀ ダッシュボード</a>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 border-b pb-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-black text-indigo-900 bg-indigo-50 px-2 py-1 rounded">部門</span>
+                    <select id="filterCategory" onchange="loadMatchesFromDB()" class="border border-gray-300 rounded p-1.5 text-xs font-bold text-gray-700 bg-white focus:ring-indigo-500">
+                        <option value="low_elem">① 小学生低学年</option>
+                        <option value="elem">② 小学生団体</option>
+                        <option value="mid">③ 中学生団体</option>
+                        <option value="mid_girls">④ 中学女子団体</option>
+                    </select>
+                </div>
+                
+                <div class="flex bg-gray-100 p-1 rounded-lg text-xs font-bold">
+                    <button id="stageTab_league" onclick="switchInputStage('予選リーグ')" class="px-4 py-1.5 rounded-md bg-white text-indigo-900 shadow-sm transition-all">予選リーグ入力</button>
+                    <button id="stageTab_tournament" onclick="switchInputStage('決勝トーナメント')" class="px-4 py-1.5 rounded-md text-gray-500 hover:text-gray-700 transition-all">決勝Ｔ入力</button>
+                </div>
+            </div>
+            
+            <div id="matchCardGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-48 overflow-y-auto pr-1 no-scrollbar">
+                <p class="text-xs text-gray-400 font-bold p-2 text-center col-span-3">対戦カードを読み込み中...</p>
+            </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-4 text-xs grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+                <span class="text-gray-400 block font-bold mb-0.5">試合区分</span>
+                <input type="text" id="inp_title" readonly class="w-full font-bold text-slate-800 bg-gray-50 border-0 p-1 rounded" value="未選択">
+            </div>
+            <div>
+                <span class="text-gray-400 block font-bold mb-0.5">ステージ</span>
+                <input type="text" id="inp_stage" readonly class="w-full font-bold text-slate-800 bg-gray-50 border-0 p-1 rounded" value="予選リーグ">
+            </div>
+            <div>
+                <span class="text-gray-400 block font-bold mb-0.5">赤（左チーム）</span>
+                <input type="text" id="inp_teamA" readonly class="w-full font-black text-red-600 bg-gray-50 border-0 p-1 rounded" value="-">
+            </div>
+            <div>
+                <span class="text-gray-400 block font-bold mb-0.5">白（右チーム）</span>
+                <input type="text" id="inp_teamB" readonly class="w-full font-black text-indigo-700 bg-gray-50 border-0 p-1 rounded" value="-">
+            </div>
+            <input type="hidden" id="inp_category" value="low_elem">
+        </div>
+
+        <div class="bg-indigo-900 text-white rounded-t-lg p-3 flex justify-between items-center shadow-md">
+            <div class="text-lg font-bold w-1/3 text-center truncate" id="display_teamA">左チーム</div>
+            <div class="text-xs font-bold bg-white text-indigo-900 px-3 py-0.5 rounded-full">VS</div>
+            <div class="text-lg font-bold w-1/3 text-center truncate" id="display_teamB">右チーム</div>
+        </div>
+
+        <div class="bg-white border-x border-gray-200 p-3 flex justify-between items-center shadow-sm">
+            <div class="text-center w-1/3">
+                <div class="text-3xl font-black text-indigo-600" id="teamA_wins">0</div>
+                <div class="text-[10px] text-gray-400">勝者数 (本数: <span id="teamA_pts">0</span>)</div>
+            </div>
+            <div class="text-center w-1/3">
+                <div id="result_badge" class="inline-block bg-gray-200 text-gray-600 font-bold px-3 py-1 rounded text-xs shadow-sm">試合を選択してください</div>
+            </div>
+            <div class="text-center w-1/3">
+                <div class="text-3xl font-black text-indigo-600" id="teamB_wins">0</div>
+                <div class="text-[10px] text-gray-400">勝者数 (本数: <span id="teamB_pts">0</span>)</div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-b-lg shadow-md border border-gray-200 p-4">
+            <div id="matchRows" class="space-y-2"></div>
+            <div id="daihyo_row" class="hidden mt-4 pt-3 border-t-4 border-red-200 bg-red-50 rounded p-3">
+                <div class="text-center text-red-600 font-bold text-xs mb-1">🔥 代表戦</div>
+                <div class="flex justify-between items-center px-2">
+                    <div class="flex gap-2 w-1/3 justify-end">
+                        <div class="score-box" id="daihyo_A_0" onclick="openModal('daihyo', 'A', 0)"></div>
+                        <div class="score-box" id="daihyo_A_1" onclick="openModal('daihyo', 'A', 1)"></div>
+                    </div>
+                    <div class="w-1/3 text-center font-bold text-sm text-red-800">代表戦</div>
+                    <div class="flex gap-2 w-1/3 justify-start">
+                        <div class="score-box" id="daihyo_B_0" onclick="openModal('daihyo', 'B', 0)"></div>
+                        <div class="score-box" id="daihyo_B_1" onclick="openModal('daihyo', 'B', 1)"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-6 text-center flex gap-4 justify-center">
+            <button onclick="saveMatchData('ongoing')" class="bg-orange-500 text-white font-bold py-2.5 px-6 rounded-lg text-sm shadow hover:bg-orange-600 transition">
+                途中経過として保存（試合中）
+            </button>
+            <button onclick="saveMatchData('finished')" class="bg-indigo-600 text-white font-black py-2.5 px-10 rounded-lg text-sm shadow-lg hover:bg-indigo-700 transition transform hover:scale-[1.01]">
+                結果を確定して配信（試合終了）
+            </button>
+        </div>
+    </div>
+
+    <div id="pointModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-[380px] shadow-2xl">
+            <h3 class="text-lg font-bold mb-4 text-center border-b pb-2">取得部位を選択</h3>
+            <div class="mb-4">
+                <p class="text-xs text-orange-600 font-bold mb-2">▼ 先取（1本目）</p>
+                <div class="grid grid-cols-4 gap-2">
+                    <button onclick="setPoint('メ○')" class="bg-orange-100 hover:bg-orange-200 text-orange-800 font-bold py-3 rounded text-sm border border-orange-200">メ○</button>
+                    <button onclick="setPoint('コ○')" class="bg-orange-100 hover:bg-orange-200 text-orange-800 font-bold py-3 rounded text-sm border border-orange-200">コ○</button>
+                    <button onclick="setPoint('ド○')" class="bg-orange-100 hover:bg-orange-200 text-orange-800 font-bold py-3 rounded text-sm border border-orange-200">ド○</button>
+                    <button onclick="setPoint('ツ○')" class="bg-orange-100 hover:bg-orange-200 text-orange-800 font-bold py-3 rounded text-sm border border-orange-200">ツ○</button>
+                </div>
+            </div>
+            <div class="mb-4">
+                <p class="text-xs text-blue-600 font-bold mb-2">▼ 通常（2本目以降）</p>
+                <div class="grid grid-cols-4 gap-2">
+                    <button onclick="setPoint('メ')" class="bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold py-3 rounded text-sm border border-blue-200">メ</button>
+                    <button onclick="setPoint('コ')" class="bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold py-3 rounded text-sm border border-blue-200">コ</button>
+                    <button onclick="setPoint('ド')" class="bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold py-3 rounded text-sm border border-blue-200">ド</button>
+                    <button onclick="setPoint('ツ')" class="bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold py-3 rounded text-sm border border-blue-200">ツ</button>
+                </div>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500 font-bold mb-2">▼ 反則・その他</p>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="setPoint('反')" class="bg-red-50 hover:bg-red-100 text-red-800 font-bold py-3 rounded text-sm border border-red-200">反則</button>
+                    <button onclick="setPoint('引')" class="bg-teal-100 hover:bg-teal-200 text-teal-800 font-bold py-3 rounded text-sm border border-teal-200">引分</button>
+                    <button onclick="setPoint('')" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded text-sm">取消</button>
+                </div>
+            </div>
+            <button onclick="closeModal()" class="w-full mt-6 border border-gray-300 text-gray-600 font-bold py-2 rounded hover:bg-gray-50">閉じる</button>
+        </div>
+    </div>
+
+    <script>
+        const positions = ['先鋒', '次鋒', '中堅', '副将', '大将'];
+        let state = {
+            A: [['', ''], ['', ''], ['', ''], ['', ''], ['', '']],
+            B: [['', ''], ['', ''], ['', ''], ['', ''], ['', '']],
+            daihyo: { A: ['', ''], B: ['', ''] }
+        };
+        let currentEdit = { posIndex: null, team: null, slotIndex: null };
+        
+        let loadedMatches = []; 
+        let currentSelectedMatchId = null; 
+        let currentInputStage = '予選リーグ'; // 日本語表記に統一して不整合を防止
+
+        const resetScoreState = () => {
+            state = {
+                A: [['', ''], ['', ''], ['', ''], ['', ''], ['', '']],
+                B: [['', ''], ['', ''], ['', ''], ['', ''], ['', '']],
+                daihyo: { A: ['', ''], B: ['', ''] }
+            };
+        };
+
+        // === 🌟 グループ化・色別カード生成 ===
+        const loadMatchesFromDB = async () => {
+            const filterCategory = document.getElementById('filterCategory').value;
+            try {
+                const res = await fetch('/api/matches');
+                loadedMatches = await res.json();
+                
+                // 日本語表記のステージ名でフィルタリング
+                const filtered = loadedMatches.filter(m => m.category === filterCategory && m.stage === currentInputStage);
+                
+                const grid = document.getElementById('matchCardGrid');
+                grid.innerHTML = '';
+
+                if (filtered.length === 0) {
+                    grid.innerHTML = '<p class="text-xs text-gray-400 font-bold p-4 text-center col-span-3">この部門にはまだ組み合わせが登録されていません。</p>';
+                    return;
+                }
+
+                const sections = {};
+
+                if (currentInputStage === '決勝トーナメント') {
+                    sections['1回戦'] = [];
+                    sections['準決勝'] = [];
+                    sections['決勝戦'] = [];
+
+                    filtered.forEach(match => {
+                        if (match.title.includes('1回戦')) sections['1回戦'].push(match);
+                        else if (match.title.includes('準決勝')) sections['準決勝'].push(match);
+                        else if (match.title.includes('決勝戦') || match.title.includes('決勝')) sections['決勝戦'].push(match);
+                        else {
+                            if (!sections['その他決勝T']) sections['その他決勝T'] = [];
+                            sections['その他決勝T'].push(match);
+                        }
+                    });
+                } else {
+                    filtered.forEach(match => {
+                        const title = match.title || '';
+                        const matchResult = title.match(/([A-Z]+リーグ)/);
+                        const leagueKey = matchResult ? matchResult[1] : 'その他予選';
+
+                        if (!sections[leagueKey]) {
+                            sections[leagueKey] = [];
+                        }
+                        sections[leagueKey].push(match);
+                    });
+                }
+
+                const sortedKeys = Object.keys(sections).sort((a, b) => {
+                    if (a.includes('その他')) return 1;
+                    if (b.includes('その他')) return -1;
+                    return a.localeCompare(b);
+                });
+
+                for (const sectionName of sortedKeys) {
+                    const matches = sections[sectionName];
+                    if (!matches || matches.length === 0) continue;
+
+                    const header = document.createElement('div');
+                    header.className = "col-span-1 sm:col-span-2 md:col-span-3 text-xs font-black text-slate-500 border-b pb-1 mt-4 mb-1 flex items-center gap-1";
+                    
+                    let headerIcon = "🔹";
+                    let sectionTitleColor = "text-slate-600";
+                    if (sectionName === '準決勝') { headerIcon = "🔥"; sectionTitleColor = "text-emerald-700"; }
+                    else if (sectionName === '決勝戦') { headerIcon = "🏆"; sectionTitleColor = "text-red-600"; }
+                    else if (sectionName.includes('リーグ')) { headerIcon = "👑"; sectionTitleColor = "text-indigo-800"; }
+
+                    header.innerHTML = `<span class="${sectionTitleColor}">${headerIcon} ${sectionName}</span>`;
+                    grid.appendChild(header);
+
+                    matches.sort((a, b) => a.title.localeCompare(b.title));
+
+                    matches.forEach(match => {
+                        const btn = document.createElement('div');
+                        btn.id = `match_card_${match.id}`;
+                        
+                        let statusClass = "bg-gray-100 border-gray-300 text-gray-600";
+                        let statusText = "未実施";
+                        if (match.status === 'finished') {
+                            statusClass = "bg-slate-400 border-slate-400 text-white opacity-70";
+                            statusText = "試合終了";
+                        } else if (match.status === 'ongoing') {
+                            statusClass = "bg-orange-500 border-orange-500 text-white animate-pulse";
+                            statusText = "試合中 ⚔️";
+                        }
+
+                        let cardColorClass = "border-gray-200 bg-white hover:border-indigo-400"; 
+                        if (currentInputStage === '決勝トーナメント') {
+                            if (sectionName === '1回戦') {
+                                cardColorClass = "border-slate-200 bg-slate-50/40 hover:border-slate-400";
+                            } else if (sectionName === '準決勝') {
+                                cardColorClass = "border-emerald-200 bg-emerald-50/20 hover:border-emerald-400";
+                            } else if (sectionName === '決勝戦') {
+                                cardColorClass = "border-red-300 bg-red-50/20 hover:border-red-500 shadow-sm";
+                            }
+                        } else {
+                            const colors = [
+                                "border-indigo-100 bg-indigo-50/10 hover:border-indigo-300",
+                                "border-amber-100 bg-amber-50/10 hover:border-amber-300",
+                                "border-emerald-100 bg-emerald-50/10 hover:border-emerald-300",
+                                "border-rose-100 bg-rose-50/10 hover:border-rose-300",
+                                "border-sky-100 bg-sky-50/10 hover:border-sky-300"
+                            ];
+                            let charSum = 0;
+                            for (let idx = 0; idx < sectionName.length; idx++) charSum += sectionName.charCodeAt(idx);
+                            cardColorClass = colors[charSum % colors.length];
+                        }
+
+                        const isSelected = match.id === currentSelectedMatchId;
+                        const finalBorderClass = isSelected ? 'selected-match-card' : cardColorClass;
+
+                        btn.className = `border rounded-xl p-2.5 cursor-pointer transition-all ${finalBorderClass}`;
+                        btn.onclick = () => selectMatchCard(match.id);
+                        
+                        btn.innerHTML = `
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-[10px] font-black text-slate-700">${match.title}</span>
+                                <span class="text-[9px] font-black px-1.5 rounded-full ${statusClass}">${statusText}</span>
+                            </div>
+                            <div class="text-xs font-bold text-gray-800 flex justify-between items-center mt-1">
+                                <span class="truncate max-w-[90px]">${match.teamA}</span>
+                                <span class="text-[10px] font-black text-slate-400 px-1 bg-gray-100 rounded">${match.status !== 'scheduled' ? `${match.scoreA}-${match.scoreB}` : 'VS'}</span>
+                                <span class="truncate max-w-[90px] text-right">${match.teamB}</span>
+                            </div>
+                        `;
+                        grid.appendChild(btn);
+                    });
+                }
+
+                if (currentSelectedMatchId) {
+                    const activeCard = document.getElementById(`match_card_${currentSelectedMatchId}`);
+                    if (activeCard) activeCard.classList.add('selected-match-card');
+                }
+
+            } catch (err) {
+                console.error("対戦グリッドのロード失敗", err);
+            }
+        };
+
+        window.selectMatchCard = (matchId) => {
+            if (currentSelectedMatchId) {
+                const prevCard = document.getElementById(`match_card_${currentSelectedMatchId}`);
+                if (prevCard) prevCard.classList.remove('selected-match-card');
+            }
+
+            currentSelectedMatchId = matchId;
+            const card = document.getElementById(`match_card_${matchId}`);
+            if (card) card.classList.add('selected-match-card');
+
+            const match = loadedMatches.find(m => m.id === matchId);
+            if (match) {
+                document.getElementById('inp_category').value = match.category;
+                document.getElementById('inp_stage').value = match.stage;
+                document.getElementById('inp_title').value = match.title;
+                document.getElementById('inp_teamA').value = match.teamA;
+                document.getElementById('inp_teamB').value = match.teamB;
+
+                resetScoreState();
+                if (match.details && Array.isArray(match.details) && match.details.length > 0) {
+                    match.details.forEach((detail) => {
+                        if (detail.pos === '代表戦') {
+                            state.daihyo.A[0] = detail.a1 || '';
+                            state.daihyo.A[1] = detail.a2 || '';
+                            state.daihyo.B[0] = detail.b1 || '';
+                            state.daihyo.B[1] = detail.b2 || '';
+                        } else {
+                            const posIdx = positions.indexOf(detail.pos);
+                            if (posIdx !== -1) {
+                                state.A[posIdx][0] = detail.a1 || '';
+                                state.A[posIdx][1] = detail.a2 || '';
+                                state.B[posIdx][0] = detail.b1 || '';
+                                state.B[posIdx][1] = detail.b2 || '';
+                            }
+                        }
+                    });
+                }
+
+                updateTeamNames();
+                renderRows();
+                renderDaihyo();
+                calculateResult();
+            }
+        };
+
+        const updateTeamNames = () => {
+            document.getElementById('display_teamA').innerText = document.getElementById('inp_teamA').value || '左チーム';
+            document.getElementById('display_teamB').innerText = document.getElementById('inp_teamB').value || '右チーム';
+        };
+
+        const getStyleClass = (val) => {
+            if (!val) return '';
+            if (val === '引') return 'draw';
+            if (val.includes('○')) return 'senshu'; 
+            return 'filled';
+        };
+
+        const renderRows = () => {
+            const container = document.getElementById('matchRows');
+            container.innerHTML = '';
+            positions.forEach((pos, index) => {
+                const row = document.createElement('div');
+                row.className = 'flex justify-between items-center py-3 border-b last:border-b-0 hover:bg-gray-50 transition px-2 rounded';
+                row.innerHTML = `
+                    <div class="flex gap-2 w-1/3 justify-end">
+                        <div class="score-box ${getStyleClass(state.A[index][0])}" onclick="openModal(${index}, 'A', 0)">${state.A[index][0]}</div>
+                        <div class="score-box ${getStyleClass(state.A[index][1])}" onclick="openModal(${index}, 'A', 1)">${state.A[index][1]}</div>
+                    </div>
+                    <div class="w-1/3 text-center font-bold text-gray-700 text-base">${pos}</div>
+                    <div class="flex gap-2 w-1/3 justify-start">
+                        <div class="score-box ${getStyleClass(state.B[index][0])}" onclick="openModal(${index}, 'B', 0)">${state.B[index][0]}</div>
+                        <div class="score-box ${getStyleClass(state.B[index][1])}" onclick="openModal(${index}, 'B', 1)">${state.B[index][1]}</div>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+        };
+
+        const renderDaihyo = () => {
+            ['A', 'B'].forEach(team => {
+                for(let i=0; i<2; i++) {
+                    const el = document.getElementById(`daihyo_${team}_${i}`);
+                    if (el) {
+                        el.className = `score-box ${getStyleClass(state.daihyo[team][i])}`;
+                        el.innerText = state.daihyo[team][i];
+                    }
+                }
+            });
+        };
+
+        const openModal = (posIndex, team, slotIndex) => {
+            if (!currentSelectedMatchId) { alert("先に上の対戦カードを選択してください。"); return; }
+            currentEdit = { posIndex, team, slotIndex };
+            document.getElementById('pointModal').classList.remove('hidden');
+        };
+
+        const closeModal = () => document.getElementById('pointModal').classList.add('hidden');
+
+        const setPoint = (point) => {
+            const { posIndex, team, slotIndex } = currentEdit;
+            if (posIndex === 'daihyo') {
+                state.daihyo[team][slotIndex] = point;
+                renderDaihyo();
+            } else {
+                state[team][posIndex][slotIndex] = point;
+                renderRows();
+            }
+            closeModal();
+            calculateResult();
+        };
+
+        const isPoint = (val) => val !== '' && val !== '引';
+
+        const calculateResult = () => {
+            const isTournament = document.getElementById('inp_stage').value === '決勝トーナメント';
+            let winsA = 0, winsB = 0, ptsA = 0, ptsB = 0;
+
+            for (let i = 0; i < 5; i++) {
+                let pA = (isPoint(state.A[i][0]) ? 1 : 0) + (isPoint(state.A[i][1]) ? 1 : 0);
+                let pB = (isPoint(state.B[i][0]) ? 1 : 0) + (isPoint(state.B[i][1]) ? 1 : 0);
+                ptsA += pA; ptsB += pB;
+                if (pA > pB) winsA++; else if (pB > pA) winsB++;
+            }
+
+            document.getElementById('teamA_wins').innerText = winsA;
+            document.getElementById('teamB_wins').innerText = winsB;
+            document.getElementById('teamA_pts').innerText = ptsA;
+            document.getElementById('teamB_pts').innerText = ptsB;
+
+            let winner = null, needDaihyo = false;
+
+            if (winsA > winsB) winner = 'A';
+            else if (winsB > winsA) winner = 'B';
+            else {
+                if (ptsA > ptsB) winner = 'A';
+                else if (ptsB > ptsA) winner = 'B';
+                else {
+                    if (isTournament) needDaihyo = true;
+                    else winner = 'DRAW';
+                }
+            }
+
+            const daihyoRow = document.getElementById('daihyo_row');
+            if (needDaihyo) {
+                daihyoRow.classList.remove('hidden');
+                let dPtA = (isPoint(state.daihyo.A[0]) ? 1 : 0) + (isPoint(state.daihyo.A[1]) ? 1 : 0);
+                let dPtB = (isPoint(state.daihyo.B[0]) ? 1 : 0) + (isPoint(state.daihyo.B[1]) ? 1 : 0);
+                if (dPtA > dPtB) winner = 'A'; else if (dPtB > dPtA) winner = 'B';
+            } else {
+                daihyoRow.classList.add('hidden');
+                state.daihyo.A = ['', '']; state.daihyo.B = ['', ''];
+                renderDaihyo();
+            }
+
+            const badge = document.getElementById('result_badge');
+            if (!currentSelectedMatchId) {
+                badge.innerText = "試合を選択してください";
+                badge.className = 'inline-block bg-gray-200 text-gray-600 font-bold px-3 py-1 rounded text-xs';
+                return;
+            }
+
+            if (winner === 'A') {
+                badge.className = 'inline-block bg-indigo-100 text-indigo-700 font-bold px-3 py-1 rounded border border-indigo-300 text-xs';
+                badge.innerText = '◀ 左勝利！';
+            } else if (winner === 'B') {
+                badge.className = 'inline-block bg-indigo-100 text-indigo-700 font-bold px-3 py-1 rounded border border-indigo-300 text-xs';
+                badge.innerText = '右勝利！ ▶';
+            } else if (winner === 'DRAW') {
+                badge.className = 'inline-block bg-teal-100 text-teal-800 font-bold px-3 py-1 rounded border border-teal-300 text-xs';
+                badge.innerText = '引分';
+            } else {
+                badge.className = 'inline-block bg-orange-100 text-orange-700 font-bold px-3 py-1 rounded border border-orange-300 text-xs';
+                badge.innerText = needDaihyo ? '代表戦突入' : '試合中...';
+            }
+        };
+
+        const saveMatchData = async (status) => {
+            if (!currentSelectedMatchId) { alert("保存する試合が選択されていません。"); return; }
+
+            const payload = {
+                id: currentSelectedMatchId,
+                category: document.getElementById('filterCategory').value,
+                stage: document.getElementById('inp_stage').value,
+                title: document.getElementById('inp_title').value,
+                teamA: document.getElementById('inp_teamA').value,
+                teamB: document.getElementById('inp_teamB').value,
+                scoreA: parseInt(document.getElementById('teamA_wins').innerText),
+                scoreB: parseInt(document.getElementById('teamB_wins').innerText),
+                status: status,
+                details: []
+            };
+
+            positions.forEach((pos, i) => {
+                payload.details.push({
+                    pos: pos,
+                    a1: state.A[i][0], a2: state.A[i][1],
+                    b1: state.B[i][0], b2: state.B[i][1]
+                });
+            });
+
+            if (!document.getElementById('daihyo_row').classList.contains('hidden')) {
+                payload.details.push({
+                    pos: '代表戦',
+                    a1: state.daihyo.A[0], a2: state.daihyo.A[1],
+                    b1: state.daihyo.B[0], b2: state.daihyo.B[1]
+                });
+            }
+
+            try {
+                const response = await fetch('/api/match_update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (response.ok) {
+                    alert('✅ 試合結果を配信・同期しました！');
+                    loadMatchesFromDB();
+                } else {
+                    alert('❌ 保存に失敗しました。');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('通信エラーが発生しました。');
+            }
+        };
+
+        // ステージ切り替え処理（日本語名に完全対応）
+        window.switchInputStage = (stage) => {
+            currentInputStage = stage;
+            const leagueBtn = document.getElementById('stageTab_league');
+            const tournamentBtn = document.getElementById('stageTab_tournament');
+            
+            if (stage === '予選リーグ') {
+                leagueBtn.className = "px-4 py-1.5 rounded-md bg-white text-indigo-900 shadow-sm transition-all";
+                tournamentBtn.className = "px-4 py-1.5 rounded-md text-gray-500 hover:text-gray-700 transition-all";
+            } else {
+                tournamentBtn.className = "px-4 py-1.5 rounded-md bg-white text-indigo-900 shadow-sm transition-all";
+                leagueBtn.className = "px-4 py-1.5 rounded-md text-gray-500 hover:text-gray-700 transition-all";
+            }
+            loadMatchesFromDB();
+        };
+
+        loadMatchesFromDB();
+    </script>
+</body>
+</html>

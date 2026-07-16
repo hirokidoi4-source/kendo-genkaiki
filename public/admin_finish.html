@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大会最終結果 配信パネル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans p-4 md:p-6">
+
+    <div class="max-w-3xl mx-auto">
+        <div class="flex justify-between items-end mb-6 border-b pb-2">
+            <h1 class="text-xl font-bold text-indigo-900">🏆 大会最終結果 配信パネル</h1>
+            <a href="/admin.html" class="text-xs font-bold text-gray-500 hover:text-indigo-600 transition">◀ ダッシュボード</a>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-black text-indigo-900 bg-indigo-50 px-2 py-1 rounded">対象部門</span>
+                <select id="selectCategory" onchange="loadCategoryResults()" class="border border-gray-300 rounded p-1.5 text-xs font-bold text-gray-700 bg-white focus:ring-indigo-500">
+                    <option value="low_elem">① 小学生低学年</option>
+                    <option value="elem">② 小学生団体</option>
+                    <option value="mid">③ 中学生団体</option>
+                    <option value="mid_girls">④ 中学女子団体</option>
+                </select>
+            </div>
+            <button onclick="autoFillFromMatches()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3 rounded-lg shadow transition">
+                ⚡ 決勝戦の結果から自動セット
+            </button>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200 mb-6 space-y-4">
+            <h2 class="text-sm font-black text-slate-700 border-b pb-2">🏆 表彰チーム設定</h2>
+
+            <div>
+                <label class="block text-xs font-bold text-gray-500 mb-1">🥇 優勝</label>
+                <select id="res_yusho" class="w-full border border-gray-300 rounded p-2 text-sm font-black text-slate-800 bg-white"></select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-gray-500 mb-1">🥈 準優勝</label>
+                <select id="res_junyusho" class="w-full border border-gray-300 rounded p-2 text-sm font-black text-slate-800 bg-white"></select>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">🥉 ３位 (Aパート側)</label>
+                    <select id="res_thirdA" class="w-full border border-gray-300 rounded p-2 text-sm font-bold text-slate-800 bg-white"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">🥉 ３位 (Bパート側)</label>
+                    <select id="res_thirdB" class="w-full border border-gray-300 rounded p-2 text-sm font-bold text-slate-800 bg-white"></select>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center">
+            <button onclick="publishResults()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-3 px-6 rounded-xl text-sm shadow-lg transition transform hover:scale-[1.01]">
+                📢 この結果を保護者・観客へ一斉配信（確定）
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let allTeams = [];
+        let allMatches = [];
+
+        // 初期ロード
+        async function init() {
+            await loadTeams();
+            await loadCategoryResults();
+        }
+
+        // 全チーム取得（プルダウンのベース用）
+        async function loadTeams() {
+            try {
+                const res = await fetch('/api/teams');
+                allTeams = await res.json();
+            } catch (err) {
+                console.error("チーム取得失敗", err);
+            }
+        }
+
+        // 部門ごとの結果ロード
+        async function loadCategoryResults() {
+            const category = document.getElementById('selectCategory').value;
+            
+            // プルダウンを選択部門のチームに絞り込んでリセット
+            const filteredTeams = allTeams.filter(t => t.category === category);
+            setupDropdowns(filteredTeams);
+
+            try {
+                // 既に保存されている最終結果があればロード
+                const res = await fetch('/api/results');
+                const resultData = await res.json();
+                
+                // 取得データが選択中の部門と一致している場合のみセット
+                if (resultData && resultData.category === category) {
+                    document.getElementById('res_yusho').value = resultData.yusho || '';
+                    document.getElementById('res_junyusho').value = resultData.junyusho || '';
+                    document.getElementById('res_thirdA').value = resultData.thirdA || '';
+                    document.getElementById('res_thirdB').value = resultData.thirdB || '';
+                } else {
+                    // データがなければ空にする
+                    document.getElementById('res_yusho').value = '';
+                    document.getElementById('res_junyusho').value = '';
+                    document.getElementById('res_thirdA').value = '';
+                    document.getElementById('res_thirdB').value = '';
+                }
+
+                // 現在の全試合データも裏で取得しておく（自動セット用）
+                const matchRes = await fetch('/api/matches');
+                allMatches = await matchRes.json();
+
+            } catch (err) {
+                console.error("結果ロードエラー", err);
+            }
+        }
+
+        // プルダウンに選択肢をセット
+        function setupDropdowns(teams) {
+            const selects = ['res_yusho', 'res_junyusho', 'res_thirdA', 'res_thirdB'];
+            selects.forEach(id => {
+                const el = document.getElementById(id);
+                el.innerHTML = '<option value="">-- 選択してください --</option>';
+                teams.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.team_name;
+                    opt.textContent = `${t.team_name} (${t.organization})`;
+                    el.appendChild(opt);
+                });
+            });
+        }
+
+        // ⚡ 決勝トーナメントの進行から勝者を自動判定して下書きセット
+        function autoFillFromMatches() {
+            const category = document.getElementById('selectCategory').value;
+            const catMatches = allMatches.filter(m => m.category === category && m.stage === '決勝トーナメント');
+
+            if (catMatches.length === 0) {
+                alert("この部門にはまだ決勝トーナメントの対戦カードがありません。");
+                return;
+            }
+
+            // 各試合の特定
+            const finalMatch = catMatches.find(m => m.title.includes('決勝戦'));
+            const semi1 = catMatches.find(m => m.title.includes('準決勝 第1試合'));
+            const semi2 = catMatches.find(m => m.title.includes('準決勝 第2試合'));
+
+            const getWinner = (m) => {
+                if (!m || m.status !== 'finished') return null;
+                return m.scoreA > m.scoreB ? m.teamA : m.teamB;
+            };
+
+            const getLoser = (m) => {
+                if (!m || m.status !== 'finished') return null;
+                return m.scoreA > m.scoreB ? m.teamB : m.teamA;
+            };
+
+            // 1. 優勝・準優勝
+            if (finalMatch && finalMatch.status === 'finished') {
+                const winner = getWinner(finalMatch);
+                const loser = getLoser(finalMatch);
+                if (winner) document.getElementById('res_yusho').value = winner;
+                if (loser) document.getElementById('res_junyusho').value = loser;
+            } else {
+                alert("💡 決勝戦がまだ終了していないため、優勝・準優勝は自動セットされませんでした。");
+            }
+
+            // 2. ３位（準決勝の敗者たち）
+            if (semi1 && semi1.status === 'finished') {
+                const loser1 = getLoser(semi1);
+                if (loser1) document.getElementById('res_thirdA').value = loser1;
+            }
+            if (semi2 && semi2.status === 'finished') {
+                const loser2 = getLoser(semi2);
+                if (loser2) document.getElementById('res_thirdB').value = loser2;
+            }
+
+            alert("⚡ 試合データから結果を下書きセットしました！内容を確認し、配信ボタンを押してください。");
+        }
+
+        // 確定して配信（保存）
+        async function publishResults() {
+            const category = document.getElementById('selectCategory').value;
+            const payload = {
+                category: category,
+                yusho: document.getElementById('res_yusho').value,
+                junyusho: document.getElementById('res_junyusho').value,
+                thirdA: document.getElementById('res_thirdA').value,
+                thirdB: document.getElementById('res_thirdB').value,
+                status: 'finished' // 配信フラグ
+            };
+
+            try {
+                const res = await fetch('/api/results', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    alert("🏆 最終結果を保護者・閲覧者にリアルタイム一斉配信しました！");
+                } else {
+                    alert("❌ 配信に失敗しました。");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("サーバーとの通信に失敗しました。");
+            }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
