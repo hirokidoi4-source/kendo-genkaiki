@@ -231,7 +231,7 @@
                         <!-- 🟩 【1回戦（左端）】 -->
                         <div class="w-56 space-y-16 flex flex-col justify-center">
                             <!-- 第1試合 -->
-                            <div class="border rounded-lg p-2 bg-slate-50 relative match-card hover:shadow transition" onclick="openModalById(${m1?.id})">
+                            <div class="border rounded-lg p-2 bg-slate-50 relative match-card hover:shadow transition" onclick="openModalById('${m1?.id}')">
                                 <div class="text-[9px] text-slate-400 font-bold mb-1">1回戦 第1試合</div>
                                 <div class="text-xs space-y-1">
                                     <div class="flex justify-between ${m1 && getWinner(m1)===m1.teamA ? 'text-indigo-700 font-black' : ''}"><span>${m1?.teamA || '-'}</span><span>${m1?.status==='finished'?m1.scoreA:''}</span></div>
