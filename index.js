@@ -154,34 +154,91 @@ app.get('/api/teams', async (req, res) => {
     res.json(data || []);
 });
 
+// index.js の該当エンドポイントを以下のように修正・強化します
+
 app.post('/api/teams/import', async (req, res) => {
-    const rawTeams = req.body;
-    if (!Array.isArray(rawTeams)) return res.status(400).json({ error: 'Invalid data format' });
-
-    const categoryMap = {
-        '小学生低学年': 'low_elem',
-        '小学生団体': 'elem',
-        '中学生団体': 'mid',
-        '中学女子団体': 'mid_girls'
-    };
-
-    const cleanedTeams = rawTeams.map(team => ({
-        category: categoryMap[team.category] || team.category,
-        team_name: team.team_name,
-        organization: team.organization
-    }));
+    const incomingTeams = req.body; // admin.html から送られてくる配列
+    
+    if (!Array.isArray(incomingTeams) || incomingTeams.length === 0) {
+        return res.status(400).json({ success: false, error: '有効なチームデータがありません。' });
+    }
 
     try {
-        const { error: dError } = await supabase.from('teams').delete().neq('id', 0);
-        if (dError) throw dError;
+        console.log(`[Import] インポート処理を開始します。受信件数: ${incomingTeams.length}件`);
 
-        const { data, error: iError } = await supabase.from('teams').insert(cleanedTeams);
-        if (iError) throw iError;
+        // ==========================================
+        // 1. 既存のチームデータを完全クリア（重複防止）
+        // ==========================================
+        // neq('id', 0) で全行を対象に削除を実行
+        const { error: deleteError } = await supabase
+            .from('teams')
+            .delete()
+            .neq('id', 0);
 
-        res.json({ success: true, count: cleanedTeams.length });
+        if (deleteError) {
+            console.error('[Import Error] 既存データの削除に失敗しました:', deleteError);
+            return res.status(500).json({ 
+                success: false, 
+                error: `既存データのクリーンアップに失敗しました。SupabaseのRLS設定（DELETE権限）を確認してください。詳細: ${deleteError.message}` 
+            });
+        }
+        console.log('[Import] 既存データのクリーンアップが正常に完了しました（0件になりました）。');
+
+        // ==========================================
+        // 2. CSVの日本語部門名をシステムコードにマッピング変換
+        // ==========================================
+        const categoryMap = {
+            '小学生低学年': 'low_elem',
+            '小学生団体': 'elem',
+            '中学生団体': 'mid',
+            '中学女子団体': 'mid_girls',
+            // 万が一、最初からコードで送られてきた場合のためのフォールバック
+            'low_elem': 'low_elem',
+            'elem': 'elem',
+            'mid': 'mid',
+            'mid_girls': 'mid_girls'
+        };
+
+        const formattedTeams = incomingTeams.map((t, index) => {
+            // 日本語の部門名からコードへ変換（トリムして余計な空白を除去）
+            const rawCategory = (t.category || '').trim();
+            const mappedCategory = categoryMap[rawCategory];
+
+            if (!mappedCategory) {
+                console.warn(`[Import Warning] 未定義の部門名が検出されました(${index + 1}行目): "${rawCategory}"。そのまま登録を試みます。`);
+            }
+
+            return {
+                category: mappedCategory || rawCategory, // マッピングできなければ元の文字列
+                team_name: (t.team_name || '').trim(),
+                organization: (t.organization || '').trim()
+            };
+        });
+
+        // ==========================================
+        // 3. 変換後のデータを一括インサート
+        // ==========================================
+        const { data, error: insertError } = await supabase
+            .from('teams')
+            .insert(formattedTeams)
+            .select();
+
+        if (insertError) {
+            console.error('[Import Error] データのインサートに失敗しました:', insertError);
+            return res.status(500).json({ success: false, error: `新規データの登録に失敗しました: ${insertError.message}` });
+        }
+
+        console.log(`[Import Success] インポートが正常に完了しました。登録件数: ${formattedTeams.length}件`);
+        
+        return res.json({ 
+            success: true, 
+            count: formattedTeams.length,
+            message: 'データを完全に初期化し、新しくインポートしました。' 
+        });
+
     } catch (err) {
-        console.error("Supabaseインポート/クリアエラー:", err);
-        return res.status(500).json({ error: err.message });
+        console.error('[Import Critical Error] システムエラーが発生しました:', err);
+        return res.status(500).json({ success: false, error: 'サーバー内で予期せぬエラーが発生しました。' });
     }
 });
 
