@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大会結果速報 - 少年剣道大会</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .highlight-card {
+            border: 3px solid #eab308 !important;
+            background-color: #fef9c3 !important;
+            transform: scale(1.02);
+            transition: all 0.3s;
+        }
+        /* 🏆 簡易トーナメントツリー用のカスタムCSS（スマホで見やすい縦並びツリー型） */
+        .tree-branch {
+            position: relative;
+        }
+        .tree-branch::after {
+            content: "";
+            position: absolute;
+            right: -16px; top: 50%;
+            width: 16px; height: 2px;
+            background-color: #cbd5e1;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+
+    <header class="bg-indigo-900 text-white p-4 shadow-md sticky top-0 z-20 flex justify-between items-center">
+        <h1 class="text-lg md:text-xl font-bold">🎌 <span id="tournamentTitle">少年剣道大会 速報</span></h1>
+        <span class="text-xs bg-indigo-800 px-2 py-1 rounded border border-indigo-700 animate-pulse">自動更新中 🟢</span>
+    </header>
+
+    <!-- 🏆 最終結果ブロック -->
+    <div id="finalResults" class="hidden bg-white p-6 shadow-md border-b-4 border-red-600 mb-2">
+        <h2 class="text-2xl font-black text-center text-red-700 mb-6 pb-2 inline-block mx-auto flex justify-center border-b-2 border-red-100">
+            🏆 大会最終結果 🏆
+        </h2>
+        <div class="space-y-4 max-w-2xl mx-auto">
+            <div class="bg-gradient-to-r from-yellow-100 to-yellow-50 border-2 border-yellow-400 rounded-xl p-4 text-center shadow-md">
+                <div class="text-yellow-600 font-black text-sm mb-1">🥇 優勝</div>
+                <div class="text-2xl md:text-3xl font-black text-gray-900" id="resWinner">-</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🔍 マイチーム検索 -->
+    <div class="bg-white p-4 shadow-sm border-b">
+        <div class="max-w-md mx-auto">
+            <label class="block text-xs font-bold text-indigo-900 mb-1">🔍 マイチーム（道場・学校名）を検索・マーク</label>
+            <div class="relative">
+                <input type="text" id="teamSearchInput" oninput="highlightMyTeam()" placeholder="例: 福岡武道館、桜剣友会..." class="w-full pl-10 pr-4 py-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-600 font-bold text-sm shadow-sm">
+                <span class="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📂 部門選択タブ -->
+    <div class="bg-white shadow-sm sticky top-[60px] z-10 overflow-x-auto no-scrollbar border-b border-gray-200">
+        <div class="flex whitespace-nowrap px-2 py-2 gap-2 min-w-max">
+            <button onclick="switchCategory('low_elem')" id="tab_low_elem" class="category-tab px-4 py-2 rounded-full text-sm font-bold bg-indigo-600 text-white transition">① 小学生低学年</button>
+            <button onclick="switchCategory('elem')" id="tab_elem" class="category-tab px-4 py-2 rounded-full text-sm font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition">② 小学生団体</button>
+            <button onclick="switchCategory('mid')" id="tab_mid" class="category-tab px-4 py-2 rounded-full text-sm font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition">③ 中学生団体</button>
+            <button onclick="switchCategory('mid_girls')" id="tab_mid_girls" class="category-tab px-4 py-2 rounded-full text-sm font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition">④ 中学女子団体</button>
+        </div>
+    </div>
+
+    <!-- ⚔️ 予選 / 決勝 切り替え -->
+    <div id="stageTabContainer" class="bg-gray-100 p-2 flex justify-center gap-4 border-b border-gray-200">
+        <button onclick="switchStage('league')" id="tab_league" class="stage-tab pb-2 px-2 text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 transition">予選リーグ</button>
+        <button onclick="switchStage('tournament')" id="tab_tournament" class="stage-tab pb-2 px-2 text-sm font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 transition">決勝トーナメント</button>
+    </div>
+
+    <!-- 📊 各リーグの所属チーム一覧（予選タブ時のみ表示） -->
+    <div id="leagueMembersArea" class="max-w-3xl mx-auto px-4 mt-4">
+        <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3">
+            <h3 class="text-xs font-bold text-indigo-900 mb-2 flex items-center gap-1">📋 各リーグの所属チーム一覧</h3>
+            <div id="leagueGroupList" class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs"></div>
+        </div>
+    </div>
+
+    <!-- 試合カード・ツリー描画メインエリア -->
+    <main class="p-4 max-w-4xl mx-auto pb-20" id="mainContent">
+    </main>
+
+    <!-- モーダル詳細（セイコースポーツリンク風） -->
+    <div id="matchModal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div class="bg-indigo-900 text-white p-3 flex justify-between items-center">
+                <span class="font-bold text-sm" id="modalTitle">試合詳細スコア</span>
+                <button onclick="closeModal()" class="text-white hover:text-gray-300 font-bold text-xl leading-none">&times;</button>
+            </div>
+            <div class="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center text-center">
+                <div class="w-5/12 font-black text-lg text-indigo-700 truncate" id="modalTeamA"></div>
+                <div class="w-2/12 font-bold text-gray-400 text-sm">VS</div>
+                <div class="w-5/12 font-black text-lg text-indigo-700 truncate" id="modalTeamB"></div>
+            </div>
+            <div class="px-4 py-2 bg-white flex justify-between items-center text-center border-b">
+                <div class="w-5/12 text-3xl font-black text-slate-800" id="modalScoreA">0</div>
+                <div class="w-2/12 text-xs text-gray-400 font-bold">勝者数</div>
+                <div class="w-5/12 text-3xl font-black text-slate-800" id="modalScoreB">0</div>
+            </div>
+            <div class="p-4 bg-white space-y-2 font-medium" id="modalDetails"></div>
+            <div class="p-4 bg-gray-50 text-center">
+                <button onclick="closeModal()" class="w-full bg-gray-300 text-gray-700 font-bold py-2.5 rounded-lg hover:bg-gray-400 transition">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentCategory = 'low_elem';
+        let currentStage = 'league';
+        let allMatches = [];
+
+        const fetchMatchData = async () => {
+            try {
+                const resResults = await fetch('/api/results');
+                const finalData = await resResults.json();
+                if (finalData.title) document.getElementById('tournamentTitle').innerText = finalData.title + ' 速報';
+
+                const resMatches = await fetch('/api/matches');
+                allMatches = await resMatches.json();
+                
+                renderLeagueOverview();
+                renderContent();       
+                highlightMyTeam();     
+            } catch (error) {
+                console.error("データの同期に失敗しました", error);
+            }
+        };
+
+        const switchCategory = (category) => {
+            currentCategory = category;
+            document.querySelectorAll('.category-tab').forEach(tab => {
+                tab.className = 'category-tab px-4 py-2 rounded-full text-sm font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition';
+            });
+            document.getElementById(`tab_${category}`).className = 'category-tab px-4 py-2 rounded-full text-sm font-bold bg-indigo-600 text-white transition';
+            renderContent();
+            renderLeagueOverview();
+        };
+
+        const switchStage = (stage) => {
+            currentStage = stage;
+            document.querySelectorAll('.stage-tab').forEach(tab => {
+                tab.className = 'stage-tab pb-2 px-2 text-sm font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 transition';
+            });
+            document.getElementById(`tab_${stage}`).className = 'stage-tab pb-2 px-2 text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 transition';
+            
+            document.getElementById('leagueMembersArea').style.display = stage === 'tournament' ? 'none' : 'block';
+            renderContent();
+            highlightMyTeam();
+        };
+
+        const renderLeagueOverview = () => {
+            const listDiv = document.getElementById('leagueGroupList');
+            listDiv.innerHTML = '';
+            if (currentStage !== 'league') return;
+
+            const filtered = allMatches.filter(m => m.category === currentCategory && m.stage === '予選リーグ');
+            const groups = { 'Aリーグ': new Set(), 'Bリーグ': new Set(), 'Cリーグ': new Set() };
+
+            filtered.forEach(m => {
+                const leagueName = m.details && m.details.league ? m.details.league : 'Aリーグ';
+                if (groups[leagueName]) { groups[leagueName].add(m.teamA); groups[leagueName].add(m.teamB); }
+            });
+
+            for (const [leagueName, teamSet] of Object.entries(groups)) {
+                const col = document.createElement('div');
+                col.className = "bg-white p-2 rounded shadow-sm border";
+                col.innerHTML = `<span class="font-bold text-indigo-700">${leagueName}</span>`;
+                const ul = document.createElement('ul');
+                ul.className = "mt-1 space-y-0.5 text-gray-600 list-disc list-inside";
+                teamSet.forEach(team => { ul.innerHTML += `<li class="league-team-item truncate" data-team="${team}">${team}</li>`; });
+                col.appendChild(ul);
+                listDiv.appendChild(col);
+            }
+        };
+
+        // === 🌟 メインの描画関数（予選カード型 / 決勝ツリー型 を切り替え） ===
+        const renderContent = () => {
+            const content = document.getElementById('mainContent');
+            content.innerHTML = '';
+
+            if (currentStage === 'league') {
+                // --- ① 予選リーグ：カード並び表示 ---
+                const filteredMatches = allMatches.filter(m => m.category === currentCategory && m.stage === '予選リーグ');
+                if (filteredMatches.length === 0) {
+                    content.innerHTML = `<div class="bg-white rounded-lg shadow-sm border p-8 text-center text-gray-400 font-bold">予選組み合わせがまだ登録されていません。</div>`;
+                    return;
+                }
+                filteredMatches.sort((a, b) => a.title.localeCompare(b.title));
+                filteredMatches.forEach(match => {
+                    const card = createMatchCard(match);
+                    content.appendChild(card);
+                });
+            } else {
+                // --- ② 決勝トーナメント：【完全版】横型本格トーナメントツリーUI ---
+                const finalMatches = allMatches.filter(m => m.category === currentCategory && m.stage === '決勝トーナメント');
+                if (finalMatches.length === 0) {
+                    content.innerHTML = `<div class="bg-white rounded-lg shadow-sm border p-8 text-center text-gray-400 font-bold">決勝トーナメント表がまだ確定されていません。</div>`;
+                    return;
+                }
+
+                finalMatches.sort((a, b) => a.title.localeCompare(b.title));
+                
+                const getWinner = (m) => {
+                    if (!m || m.status !== 'finished') return null;
+                    return m.scoreA > m.scoreB ? m.teamA : m.teamB;
+                };
+
+                const m1 = finalMatches.find(m => m.title.includes('第1試合'));
+                const m2 = finalMatches.find(m => m.title.includes('第2試合'));
+                const m3 = finalMatches.find(m => m.title.includes('第3試合'));
+
+                const w1 = m1 ? getWinner(m1) || '準決勝進出' : '1試合目勝者';
+                const w2 = m2 ? getWinner(m2) || '準決勝進出' : '2試合目勝者';
+                const w3 = m3 ? getWinner(m3) || '準決勝進出' : '3試合目勝者';
+
+                // スクロール可能なコンテナを作成し、本物のトーナメント図を構築
+                const treeWrapper = document.createElement('div');
+                treeWrapper.className = "w-full overflow-x-auto no-scrollbar py-4 bg-white rounded-xl shadow-sm border p-4 select-none";
+                
+                treeWrapper.innerHTML = `
+                    <div class="text-center font-bold text-xs text-indigo-900 mb-6 border-b pb-2">📊 左右にスクロール可能 ＆ タップで詳細オーダー表示</div>
+                    
+                    <div class="flex items-center min-w-[700px] justify-between px-4 relative">
+                        
+                        <!-- 🟩 【1回戦（左端）】 -->
+                        <div class="w-56 space-y-16 flex flex-col justify-center">
+                            <!-- 第1試合 -->
+                            <div class="border rounded-lg p-2 bg-slate-50 relative match-card hover:shadow transition" onclick="openModalById(${m1?.id})">
+                                <div class="text-[9px] text-slate-400 font-bold mb-1">1回戦 第1試合</div>
+                                <div class="text-xs space-y-1">
+                                    <div class="flex justify-between ${m1 && getWinner(m1)===m1.teamA ? 'text-indigo-700 font-black' : ''}"><span>${m1?.teamA || '-'}</span><span>${m1?.status==='finished'?m1.scoreA:''}</span></div>
+                                    <div class="border-t my-1"></div>
+                                    <div class="flex justify-between ${m1 && getWinner(m1)===m1.teamB ? 'text-indigo-700 font-black' : ''}"><span>${m1?.teamB || '-'}</span><span>${m1?.status==='finished'?m1.scoreB:''}</span></div>
+                                </div>
+                                <!-- 右へ伸びるツリー線 -->
+                                <div class="absolute right-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
+                            </div>
+
+                            <!-- 第2試合 -->
+                            <div class="border rounded-lg p-2 bg-slate-50 relative match-card hover:shadow transition" onclick="openModalById(${m2?.id})">
+                                <div class="text-[9px] text-slate-400 font-bold mb-1">1回戦 第2試合</div>
+                                <div class="text-xs space-y-1">
+                                    <div class="flex justify-between ${m2 && getWinner(m2)===m2.teamA ? 'text-indigo-700 font-black' : ''}"><span>${m2?.teamA || '-'}</span><span>${m2?.status==='finished'?m2.scoreA:''}</span></div>
+                                    <div class="border-t my-1"></div>
+                                    <div class="flex justify-between ${m2 && getWinner(m2)===m2.teamB ? 'text-indigo-700 font-black' : ''}"><span>${m2?.teamB || '-'}</span><span>${m2?.status==='finished'?m2.scoreB:''}</span></div>
+                                </div>
+                                <div class="absolute right-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
+                            </div>
+
+                            <!-- 第3試合 -->
+                            <div class="border rounded-lg p-2 bg-slate-50 relative match-card hover:shadow transition" onclick="openModalById(${m3?.id})">
+                                <div class="text-[9px] text-slate-400 font-bold mb-1">1回戦 第3試合</div>
+                                <div class="text-xs space-y-1">
+                                    <div class="flex justify-between ${m3 && getWinner(m3)===m3.teamA ? 'text-indigo-700 font-black' : ''}"><span>${m3?.teamA || '-'}</span><span>${m3?.status==='finished'?m3.scoreA:''}</span></div>
+                                    <div class="border-t my-1"></div>
+                                    <div class="flex justify-between ${m3 && getWinner(m3)===m3.teamB ? 'text-indigo-700 font-black' : ''}"><span>${m3?.teamB || '-'}</span><span>${m3?.status==='finished'?m3.scoreB:''}</span></div>
+                                </div>
+                                <div class="absolute right-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
+                            </div>
+                        </div>
+
+                        <!-- 🟨 【準決勝（中央）】縦線を結合して山を作ります -->
+                        <div class="w-56 space-y-28 flex flex-col justify-center pl-4 relative">
+                            <!-- 縦の結合ツリー線1 -->
+                            <div class="absolute left-0 top-[65px] w-0.5 h-[105px] bg-slate-300"></div>
+                            
+                            <!-- 準決勝 1 -->
+                            <div class="border rounded-lg p-2 bg-indigo-50/40 relative">
+                                <div class="text-[9px] text-indigo-700 font-bold mb-1">準決勝 第1試合</div>
+                                <div class="text-xs space-y-1 font-bold">
+                                    <div class="truncate text-slate-700">${w1}</div>
+                                    <div class="border-t my-1 border-indigo-200"></div>
+                                    <div class="truncate text-slate-700">${w2}</div>
+                                </div>
+                                <div class="absolute right-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
+                                <div class="absolute left-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
+                            </div>
+
+                            <!-- 準決勝 2 (シード山) -->
+                            <div class="border rounded-lg p-2 bg-indigo-50/40 relative">
+                                <div class="text-[9px] text-indigo-700 font-bold mb-1">準決勝 第2試合</div>
+                                <div class="text-xs space-y-1 font-bold">
+                                    <div class="truncate text-slate-700">${w3}</div>
+                                    <div class="border-t my-1 border-indigo-200"></div>
+                                    <div class="truncate text-gray-400">（不戦勝・シード山）</div>
+                                </div>
+                                <div class="absolute right-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
+                                <div class="absolute left-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
+                            </div>
+                            
+                            <!-- 縦の結合ツリー線2 -->
+                            <div class="absolute left-0 top-[230px] w-0.5 h-[105px] bg-slate-300"></div>
+                        </div>
+
+                        <!-- 🟥 【決勝（右端）】 -->
+                        <div class="w-56 flex flex-col justify-center pl-4 relative">
+                            <!-- 決勝へ繋ぐ大きな縦の結合線 -->
+                            <div class="absolute left-0 top-[115px] w-0.5 h-[165px] bg-slate-400"></div>
+
+                            <div class="border-2 border-red-500 rounded-lg p-3 bg-gradient-to-br from-red-50 to-white relative shadow-md">
+                                <div class="text-[10px] font-black text-red-600 mb-1 flex items-center gap-0.5">🏆 決勝戦</div>
+                                <div class="text-xs space-y-1 font-black text-slate-800">
+                                    <div class="truncate">準決勝1の勝者</div>
+                                    <div class="border-t my-1.5 border-red-200"></div>
+                                    <div class="truncate">準決勝2の勝者</div>
+                                </div>
+                                <div class="absolute left-[-16px] top-1/2 w-4 h-0.5 bg-slate-400"></div>
+                            </div>
+                        </div>
+
+                    </div>
+                `;
+                content.appendChild(treeWrapper);
+            }
+        };
+
+        // 試合用カードコンポーネントを生成する関数（予選用）
+        const createMatchCard = (match) => {
+            const card = document.createElement('div');
+            card.className = 'match-card bg-white rounded-lg shadow-sm border border-gray-200 mb-3 overflow-hidden cursor-pointer hover:shadow-md transition-all';
+            card.setAttribute('data-team-a', match.teamA);
+            card.setAttribute('data-team-b', match.teamB);
+            card.onclick = () => openModal(match);
+
+            let statusBadge = '';
+            let scoreText = 'VS';
+            let scoreColor = 'text-indigo-600';
+
+            if (match.status === 'finished') {
+                statusBadge = `<span class="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded font-bold">試合終了</span>`;
+                scoreText = `${match.scoreA} - ${match.scoreB}`;
+                scoreColor = 'text-gray-800 font-black';
+            } else if (match.status === 'ongoing') {
+                statusBadge = `<span class="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded font-bold animate-pulse">試合中 ⚔️</span>`;
+                scoreText = `${match.scoreA} - ${match.scoreB}`;
+                scoreColor = 'text-red-600 font-black';
+            } else {
+                statusBadge = `<span class="bg-gray-400 text-white text-[10px] px-2 py-0.5 rounded font-bold">試合前</span>`;
+            }
+
+            card.innerHTML = `
+                <div class="bg-gray-50 px-3 py-1.5 border-b text-xs text-gray-500 font-bold flex justify-between items-center">
+                    <span>${match.title}</span>
+                    ${statusBadge}
+                </div>
+                <div class="p-4 flex justify-between items-center text-center">
+                    <div class="w-5/12 font-bold text-gray-800 truncate">${match.teamA}</div>
+                    <div class="w-2/12 flex flex-col items-center">
+                        <span class="text-xl ${scoreColor}">${scoreText}</span>
+                    </div>
+                    <div class="w-5/12 font-bold text-gray-800 truncate">${match.teamB}</div>
+                </div>
+            `;
+            return card;
+        };
+
+        // IDから直接モーダルを開く関数（トーナメントツリー用）
+        window.openModalById = (matchId) => {
+            if(!matchId) return;
+            const match = allMatches.find(m => m.id === matchId);
+            if(match) openModal(match);
+        };
+
+        const openModal = (match) => {
+            document.getElementById('modalTitle').innerText = match.title;
+            document.getElementById('modalTeamA').innerText = match.teamA;
+            document.getElementById('modalTeamB').innerText = match.teamB;
+            
+            const hasStarted = match.status === 'finished' || match.status === 'ongoing';
+            document.getElementById('modalScoreA').innerText = hasStarted ? match.scoreA : '0';
+            document.getElementById('modalScoreB').innerText = hasStarted ? match.scoreB : '0';
+
+            const detailsContainer = document.getElementById('modalDetails');
+            detailsContainer.innerHTML = '';
+
+            if (!hasStarted) {
+                detailsContainer.innerHTML = '<p class="text-center text-gray-400 py-4 text-sm font-bold">まだ試合が始まっていません</p>';
+            } else if (!match.details || match.details.length === 0) {
+                detailsContainer.innerHTML = '<p class="text-center text-gray-500 py-4 text-sm font-bold">詳細データ（先鋒〜大将）が未入力です</p>';
+            } else {
+                match.details.forEach(detail => {
+                    const row = document.createElement('div');
+                    row.className = 'flex justify-between items-center py-2 border-b last:border-b-0 text-sm';
+                    
+                    const formatPoint = (pt) => {
+                        if(!pt) return '-';
+                        if(pt === '引') return `<span class="text-teal-600 font-bold">引</span>`;
+                        if(pt.includes('○')) return `<span class="text-orange-600 font-black">${pt}</span>`;
+                        return `<span class="text-indigo-800 font-bold">${pt}</span>`;
+                    };
+
+                    row.innerHTML = `
+                        <div class="w-5/12 flex justify-end gap-2 pr-2">${formatPoint(detail.a1)} ${formatPoint(detail.a2)}</div>
+                        <div class="w-2/12 text-center font-bold text-gray-400 text-xs bg-gray-50 rounded py-1">${detail.pos}</div>
+                        <div class="w-5/12 flex justify-start gap-2 pl-2">${formatPoint(detail.b1)} ${formatPoint(detail.b2)}</div>
+                    `;
+                    detailsContainer.appendChild(row);
+                });
+            }
+            document.getElementById('matchModal').classList.remove('hidden');
+        };
+
+        const closeModal = () => document.getElementById('matchModal').classList.add('hidden');
+
+        window.highlightMyTeam = () => {
+            const keyword = document.getElementById('teamSearchInput').value.trim();
+            const cards = document.querySelectorAll('.match-card, .match-row-item');
+            const listItems = document.querySelectorAll('.league-team-item');
+
+            cards.forEach(card => card.classList.remove('highlight-card'));
+            listItems.forEach(item => item.classList.remove('text-yellow-600', 'font-black'));
+
+            if (!keyword) return;
+
+            cards.forEach(card => {
+                const teamA = card.getAttribute('data-team-a') || '';
+                const teamB = card.getAttribute('data-team-b') || '';
+                if (teamA.includes(keyword) || teamB.includes(keyword)) {
+                    card.classList.add('highlight-card');
+                }
+            });
+
+            listItems.forEach(item => {
+                const team = item.getAttribute('data-team');
+                if (team && team.includes(keyword)) { item.classList.add('text-yellow-600', 'font-black'); }
+            });
+        };
+
+        fetchMatchData();
+        setInterval(fetchMatchData, 5000);
+    </script>
+</body>
+</html>

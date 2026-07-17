@@ -182,70 +182,20 @@
                 toggleRemoveButtons();
             });
 
-            // --- 参加部門の必須チェック ＆ データ送信処理 ---
+            // --- 参加部門の必須チェック ---
             const form = document.getElementById('entryForm');
             const categoryError = document.getElementById('categoryError');
 
-            form.addEventListener('submit', async (e) => {
-                e.preventDefault(); // 常にブラウザの標準送信（画面遷移）を防止！
-                
+            form.addEventListener('submit', (e) => {
                 const checkboxes = document.querySelectorAll('.category-checkbox');
                 const isChecked = Array.from(checkboxes).some(cb => cb.checked);
                 
                 if (!isChecked) {
+                    e.preventDefault(); 
                     categoryError.classList.remove('hidden');
                     categoryError.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    return; // 部門が選ばれていなければここで処理をストップ
-                }
-                
-                categoryError.classList.add('hidden');
-
-                // フォームに入力されたデータを収集
-                const formData = new FormData(form);
-                const data = {};
-                formData.forEach((value, key) => {
-                    if (data[key]) {
-                        if (!Array.isArray(data[key])) {
-                            data[key] = [data[key]];
-                        }
-                        data[key].push(value);
-                    } else {
-                        data[key] = value;
-                    }
-                });
-
-                // 審判員のデータをリストとして収集（name属性をHTML側と完全一致に修正！）
-                const referees = [];
-                container.querySelectorAll('.referee-row').forEach(row => {
-                    const name = row.querySelector('input[name="referee_name[]"]')?.value;
-                    const dan = row.querySelector('select[name="referee_dan[]"]')?.value;
-                    const title = row.querySelector('select[name="referee_title[]"]')?.value;
-                    if (name) {
-                        referees.push({ name, dan, title });
-                    }
-                });
-                data.referees = referees;
-
-                try {
-                    // 🚀 サーバーの保存用APIへ送信
-                    const response = await fetch('/api/match', { 
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(data),
-                    });
-
-                    if (response.ok) {
-                        // 送信が成功したら、完了画面に移動
-                        window.location.href = '/admin_finish.html';
-                    } else {
-                        const errText = await response.text();
-                        alert('エラーが発生しました: ' + errText);
-                    }
-                } catch (error) {
-                    console.error('送信エラー:', error);
-                    alert('送信中にエラーが発生しました。接続を確認してください。');
+                } else {
+                    categoryError.classList.add('hidden');
                 }
             });
 
@@ -254,7 +204,7 @@
                     categoryError.classList.add('hidden');
                 });
             });
-        }); // 全体を囲むDOMContentLoadedの閉じカッコを追加！
+        });
     </script>
 </body>
 </html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大会運営ダッシュボード - 少年剣道大会</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans p-6 md:p-10">
+
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-8 flex justify-between items-end border-b pb-4">
+            <div>
+                <h1 class="text-3xl font-black text-indigo-900">⚙️ 大会運営ダッシュボード</h1>
+                <p class="text-gray-500 mt-2 font-bold">少年剣道大会 運営システム</p>
+            </div>
+            <a href="/spectator.html" target="_blank" class="bg-indigo-100 text-indigo-700 px-4 py-2 rounded font-bold hover:bg-indigo-200 transition shadow-sm flex items-center gap-2">
+                📱 観客用画面を確認
+            </a>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <div class="bg-white p-6 rounded-xl shadow-sm border-t-4 border-blue-500 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-blue-900">
+                        <span class="text-2xl">📝</span> 事前準備 & 申込管理
+                    </h2>
+                    <div class="space-y-3">
+                        <a href="/index.html" class="block p-4 border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition group">
+                            <div class="font-bold text-lg text-gray-800 group-hover:text-blue-700">1. 大会申込フォーム</div>
+                            <div class="text-sm text-gray-500 mt-1">参加道場・チームのエントリー受付</div>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="mt-6 pt-6 border-t border-gray-100 bg-gray-50/50 p-4 rounded-lg">
+                    <h3 class="font-bold text-sm text-blue-900 flex items-center gap-1 mb-2">📥 エントリーCSVインポート</h3>
+                    <div class="flex flex-col gap-2">
+                        <input type="file" id="csvFile" accept=".csv" class="text-sm text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 cursor-pointer" />
+                        <button onclick="handleCSVImport()" class="w-full bg-blue-600 text-white text-sm font-bold py-2 rounded hover:bg-blue-700 transition shadow-sm">
+                            チームデータをインポート
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border-t-4 border-green-500 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-green-900">
+                        <span class="text-2xl">📊</span> 組み合わせ作成
+                    </h2>
+                    <div class="space-y-3">
+                        <a href="/step2.html" class="block p-4 border rounded-lg hover:bg-green-50 hover:border-green-300 transition group">
+                            <div class="font-bold text-lg text-gray-800 group-hover:text-green-700">2. 予選リーグ配置</div>
+                            <div class="text-sm text-gray-500 mt-1">ドラッグ＆ドロップで同門を避けて配置</div>
+                        </a>
+                        <a href="/tournament_setup.html" class="block p-4 border rounded-lg hover:bg-green-50 hover:border-green-300 transition group">
+                            <div class="font-bold text-lg text-gray-800 group-hover:text-green-700">3. 決勝トーナメント配置</div>
+                            <div class="text-sm text-gray-500 mt-1">予選通過チームの最終調整</div>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="mt-6 pt-6 border-t border-gray-100 bg-gray-50/50 p-4 rounded-lg">
+                    <h3 class="font-bold text-sm text-green-900 flex items-center gap-1 mb-2">⚡ 同門回避 自動生成</h3>
+                    <div class="flex gap-2 mb-2">
+                      <select id="selectCategory" class="w-full bg-white border border-gray-300 rounded px-2 py-1.5 text-sm font-medium text-gray-700 focus:outline-none focus:border-green-500">
+                          <option value="low_elem">小学生低学年</option>
+                          <option value="elem">小学生団体</option>
+                          <option value="mid">中学生団体</option>
+                          <option value="mid_girls">中学女子団体</option>
+                      </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="generateMatches('league')" class="bg-green-600 text-white text-xs font-bold py-2 rounded hover:bg-green-700 transition shadow-sm">
+                            予選リーグ生成
+                        </button>
+                        <button onclick="generateMatches('tournament')" class="bg-emerald-600 text-white text-xs font-bold py-2 rounded hover:bg-emerald-700 transition shadow-sm">
+                            決勝トーナメント生成
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border-t-4 border-orange-500 md:col-span-2">
+                <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-orange-900">
+                    <span class="text-2xl">⚔️</span> 試合進行・結果入力（当日）
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <a href="/step3.html" class="block p-4 border rounded-lg hover:bg-orange-50 hover:border-orange-300 transition group">
+                        <div class="font-bold text-lg text-gray-800 group-hover:text-orange-700">4. 試合結果の入力（コート進行）</div>
+                        <div class="text-sm text-gray-500 mt-1">各試合ごとのスコア（メ・コ・ドなど）を入力</div>
+                    </a>
+                    <a href="/admin_finish.html" class="block p-4 border rounded-lg hover:bg-red-50 hover:border-red-300 transition group bg-red-50/30">
+                        <div class="font-bold text-lg text-red-800 group-hover:text-red-600">5. 最終結果の一斉配信</div>
+                        <div class="text-sm text-gray-600 mt-1">優勝〜第3位を決定し、観客スマホへ通知</div>
+                    </a>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+    // CSVを読み込んでJSONでサーバーに投げる処理
+    async function handleCSVImport() {
+        const fileInput = document.getElementById('csvFile');
+        if (!fileInput.files.length) return alert('CSVファイルを選択してください');
+
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+
+        reader.onload = async function(e) {
+            const text = e.target.result;
+            const lines = text.split('\n');
+            const teams = [];
+
+            // 簡易CSVパース (ヘッダー: category, team_name, organization)
+            for(let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue; // 空行スキップ
+                const cols = lines[i].split(',');
+                if (cols.length >= 3) {
+                    teams.push({
+                        category: cols[0].trim(),
+                        team_name: cols[1].trim(),
+                        organization: cols[2].trim()
+                    });
+                }
+            }
+
+            // サーバーへ送信
+            try {
+                const res = await fetch('/api/teams/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(teams)
+                });
+                const result = await res.json();
+                if(result.success) {
+                    alert(`✅ ${result.count} チームのインポートに成功しました！`);
+                } else {
+                    alert('❌ インポート失敗: ' + result.error);
+                }
+            } catch(err) {
+                alert('❌ 通信エラーが発生しました。');
+            }
+        };
+        reader.readAsText(file, 'UTF-8');
+    }
+
+    // 組み合わせ生成リクエスト
+    async function generateMatches(type) {
+        const category = document.getElementById('selectCategory').value;
+        const typeStr = type === 'league' ? '予選リーグ' : '決勝トーナメント';
+        if(!confirm(`⚠️ ${category} の【${typeStr}】を自動生成しますか？\n（まだ対戦が始まっていない既存のカードは上書きされます）`)) return;
+
+        try {
+            const res = await fetch('/api/tournament/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ category, type })
+            });
+            const result = await res.json();
+            if(result.success) {
+                alert('🎯 ' + result.message);
+            } else {
+                alert('❌ 生成エラー: ' + result.error);
+            }
+        } catch(err) {
+            alert('❌ 通信エラーが発生しました。');
+        }
+    }
+    </script>
+</body>
+</html>

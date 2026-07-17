@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>決勝トーナメント配置 - 少年剣道大会</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans p-4 md:p-8">
+
+    <div class="max-w-5xl mx-auto">
+        <div class="flex justify-between items-end mb-6 border-b pb-4">
+            <div>
+                <h1 class="text-2xl font-bold text-indigo-900">🏆 決勝トーナメント 組み合わせ管理</h1>
+                <p class="text-xs text-gray-500 mt-1">予選の結果から自動で進出チームを算出。同門を避けたトーナメント表を即座に構築します。</p>
+            </div>
+            <div class="flex gap-3 items-center">
+                <a id="jumpToStep3Btn" href="/step3.html" class="hidden bg-orange-500 hover:bg-orange-600 text-white font-black py-2 px-5 rounded shadow animate-bounce transition flex items-center gap-1 text-sm">
+                    📝 そのまま試合結果入力へ進む ➔
+                </a>
+                <button id="saveBtn" class="bg-indigo-600 text-white font-bold py-2 px-6 rounded shadow hover:bg-indigo-700 transition">
+                    この配置でトーナメント表を確定
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl shadow-sm mb-6 border border-gray-200">
+            <h2 class="text-sm font-bold text-indigo-900 mb-3 flex items-center gap-1">⚡ 予選通過チームの選択（予選終了時に自動セットされます）</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">対象部門</label>
+                    <select id="categorySelect" onchange="loadCategoryTeams()" class="w-full border border-gray-300 rounded p-2 text-sm font-bold focus:ring-indigo-500">
+                        <option value="low_elem">① 小学生低学年</option>
+                        <option value="elem">② 小学生団体</option>
+                        <option value="mid">③ 中学生団体</option>
+                        <option value="mid_girls">④ 中学女子団体</option>
+                    </select>
+                </div>
+                <div class="flex items-end">
+                    <button onclick="autoDrawFinals()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded shadow text-sm transition flex justify-center items-center gap-1">
+                        🎯 同門隔離：自動抽選を実行
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 p-4 rounded-lg border border-dashed">
+                <p class="text-[11px] text-gray-500 font-bold mb-3">▼ 予選結果（勝者数）に基づき、自動選出されています（手動微調整も可能）</p>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4" id="slotSelectorContainer">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1">Aリーグ 1位</label>
+                        <select id="slot_0" class="team-slot-select w-full border p-2 rounded text-xs bg-white focus:ring-indigo-500 font-medium"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1">Bリーグ 1位</label>
+                        <select id="slot_1" class="team-slot-select w-full border p-2 rounded text-xs bg-white focus:ring-indigo-500 font-medium"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1">Cリーグ 1位</label>
+                        <select id="slot_2" class="team-slot-select w-full border p-2 rounded text-xs bg-white focus:ring-indigo-500 font-medium"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1">Aリーグ 2位</label>
+                        <select id="slot_3" class="team-slot-select w-full border p-2 rounded text-xs bg-white focus:ring-indigo-500 font-medium"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1">Bリーグ 2位</label>
+                        <select id="slot_4" class="team-slot-select w-full border p-2 rounded text-xs bg-white focus:ring-indigo-500 font-medium"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1">Cリーグ 2位</label>
+                        <select id="slot_5" class="team-slot-select w-full border p-2 rounded text-xs bg-white focus:ring-indigo-500 font-medium"></select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-col md:flex-row gap-8">
+            <div class="flex-1 bg-white rounded-lg shadow-md border border-gray-200">
+                <div class="bg-indigo-800 text-white font-bold px-4 py-3 rounded-t-lg text-center text-sm tracking-wider">
+                    ◀ 左の山（Aブロック）
+                </div>
+                <div class="p-4 bg-indigo-50/30">
+                    <ul id="leftBracket" class="sortable-list space-y-3 min-h-[180px]"></ul>
+                </div>
+            </div>
+
+            <div class="flex-1 bg-white rounded-lg shadow-md border border-gray-200">
+                <div class="bg-red-800 text-white font-bold px-4 py-3 rounded-t-lg text-center text-sm tracking-wider">
+                    右の山（Bブロック） ▶
+                </div>
+                <div class="p-4 bg-red-50/30">
+                    <ul id="rightBracket" class="sortable-list space-y-3 min-h-[180px]"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allTeamsList = []; 
+        let allMatchesList = []; // 【追加】予選結果計算用
+        const lists = document.querySelectorAll('.sortable-list');
+
+        // === 1. 部門チームデータの読込 ➔ 予選スコアの自動集計 ➔ プルダウン自動セット ===
+        const loadCategoryTeams = async () => {
+            const category = document.getElementById('categorySelect').value;
+            try {
+                // データのキャッシュ取得
+                if (allTeamsList.length === 0) {
+                    const res = await fetch('/api/teams');
+                    allTeamsList = await res.json();
+                }
+                const resMatches = await fetch('/api/matches');
+                allMatchesList = await resMatches.json();
+
+                const filteredTeams = allTeamsList.filter(t => t.category === category);
+
+                // プルダウンのオプションを初期ビルド
+                for (let i = 0; i < 6; i++) {
+                    const select = document.getElementById(`slot_${i}`);
+                    select.innerHTML = '<option value="">-- 未選出（空枠） --</option>';
+                    filteredTeams.forEach(team => {
+                        const opt = document.createElement('option');
+                        opt.value = team.team_name;
+                        opt.setAttribute('data-org', team.organization);
+                        opt.innerText = `${team.team_name} (${team.organization})`;
+                        select.appendChild(opt);
+                    });
+                }
+
+                // 🌟 【目玉機能】予選リーグ結果から1位・2位を自動計算するロジック
+                const leagueMatches = allMatchesList.filter(m => m.category === category && m.stage === '予選リーグ');
+                
+                // 各チームの勝ち点を集計するオブジェクト
+                const teamStats = {};
+                filteredTeams.forEach(t => {
+                    teamStats[t.team_name] = { wins: 0, team: t, league: '不明' };
+                });
+
+                leagueMatches.forEach(m => {
+                    const leagueName = m.details && m.details.league ? m.details.league : 'Aリーグ';
+                    if (!teamStats[m.teamA]) teamStats[m.teamA] = { wins: 0, team: { team_name: m.teamA, organization: '' }, league: leagueName };
+                    if (!teamStats[m.teamB]) teamStats[m.teamB] = { wins: 0, team: { team_name: m.teamB, organization: '' }, league: leagueName };
+                    
+                    teamStats[m.teamA].league = leagueName;
+                    teamStats[m.teamB].league = leagueName;
+
+                    // 勝者数(score)が多い方に勝ち点をプラス
+                    if (m.status === 'finished') {
+                        if (m.scoreA > m.scoreB) teamStats[m.teamA].wins += 3; // 勝利
+                        else if (m.scoreB > m.scoreA) teamStats[m.teamB].wins += 3;
+                        else {
+                            teamStats[m.teamA].wins += 1; // 引き分け
+                            teamStats[m.teamB].wins += 1;
+                        }
+                    }
+                });
+
+                // リーグごとにチームを分類してソート
+                const leagues = { 'Aリーグ': [], 'Bリーグ': [], 'Cリーグ': [] };
+                Object.values(teamStats).forEach(stat => {
+                    if (leagues[stat.league]) leagues[stat.league].push(stat);
+                });
+
+                // 各リーグ内を勝ち点順にソート（1位、2位を決定）
+                const sortedLeagues = {};
+                ['Aリーグ', 'Bリーグ', 'Cリーグ'].forEach(lName => {
+                    leagues[lName].sort((a, b) => b.wins - a.wins);
+                    sortedLeagues[lName] = leagues[lName];
+                });
+
+                // 計算した1位・2位のチーム名をプルダウンに自動割り当て（自動選択状態にする）
+                // slot_0: A1位, slot_1: B1位, slot_2: C1位, slot_3: A2位, slot_4: B2位, slot_5: C2位
+                if (sortedLeagues['Aリーグ'][0]) document.getElementById('slot_0').value = sortedLeagues['Aリーグ'][0].team.team_name;
+                if (sortedLeagues['Bリーグ'][0]) document.getElementById('slot_1').value = sortedLeagues['Bリーグ'][0].team.team_name;
+                if (sortedLeagues['Cリーグ'][0]) document.getElementById('slot_2').value = sortedLeagues['Cリーグ'][0].team.team_name;
+                if (sortedLeagues['Aリーグ'][1]) document.getElementById('slot_3').value = sortedLeagues['Aリーグ'][1].team.team_name;
+                if (sortedLeagues['Bリーグ'][1]) document.getElementById('slot_4').value = sortedLeagues['Bリーグ'][1].team.team_name;
+                if (sortedLeagues['Cリーグ'][1]) document.getElementById('slot_5').value = sortedLeagues['Cリーグ'][1].team.team_name;
+
+                // 山の表示をクリア
+                document.getElementById('leftBracket').innerHTML = '';
+                document.getElementById('rightBracket').innerHTML = '';
+
+            } catch (err) {
+                console.error(err);
+            }
+        };
+
+        // === 2. 同門を左右の山に隔離する自動抽選 ===
+        window.autoDrawFinals = () => {
+            const selectedTeams = [];
+
+            for (let i = 0; i < 6; i++) {
+                const select = document.getElementById(`slot_${i}`);
+                if (select.value) {
+                    const selectedOpt = select.options[select.selectedIndex];
+                    selectedTeams.push({
+                        team_name: select.value,
+                        organization: selectedOpt.getAttribute('data-org')
+                    });
+                }
+            }
+
+            if (selectedTeams.length === 0) {
+                alert("予選通過チームが選択されていません。自動セットされない場合は、手動でプルダウンを選んでください。");
+                return;
+            }
+
+            const orgGroups = {};
+            selectedTeams.forEach(t => {
+                if (!orgGroups[t.organization]) orgGroups[t.organization] = [];
+                orgGroups[t.organization].push(t);
+            });
+
+            const leftBracketTeams = [];
+            const rightBracketTeams = [];
+
+            Object.keys(orgGroups).forEach(org => {
+                const group = orgGroups[org];
+                group.forEach((team, index) => {
+                    if (index % 2 === 0) {
+                        leftBracketTeams.push(team);
+                    } else {
+                        rightBracketTeams.push(team);
+                    }
+                });
+            });
+
+            renderBracket('leftBracket', leftBracketTeams);
+            renderBracket('rightBracket', rightBracketTeams);
+
+            refreshBracketIndexAndCheck();
+        };
+
+        const renderBracket = (elementId, teamsArray) => {
+            const ul = document.getElementById(elementId);
+            ul.innerHTML = '';
+            teamsArray.forEach(team => {
+                const li = document.createElement('li');
+                li.className = "bg-white border border-gray-300 p-3 rounded cursor-move hover:border-indigo-500 hover:shadow-md transition flex items-center justify-between";
+                li.setAttribute('data-org', team.organization);
+                li.setAttribute('data-team', team.team_name);
+                li.innerHTML = `
+                    <div>
+                        <span class="badge text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-1 rounded mr-2">枠 -</span>
+                        <span class="font-bold text-base text-gray-900">${team.team_name}</span>
+                    </div>
+                    <span class="text-xs text-gray-400">母体: ${team.organization}</span>
+                `;
+                ul.appendChild(li);
+            });
+        };
+
+        const refreshBracketIndexAndCheck = () => {
+            let totalIndex = 1;
+
+            lists.forEach(list => {
+                const items = Array.from(list.children);
+                const orgCount = {};
+
+                items.forEach(item => {
+                    item.classList.remove('border-red-500', 'bg-red-50');
+                    const badge = item.querySelector('.badge');
+                    badge.innerText = `枠 ${totalIndex}`;
+                    totalIndex++;
+                    
+                    const alertMark = item.querySelector('.alert-mark');
+                    if (alertMark) alertMark.remove();
+
+                    const org = item.getAttribute('data-org');
+                    orgCount[org] = (orgCount[org] || 0) + 1;
+                });
+
+                items.forEach(item => {
+                    const org = item.getAttribute('data-org');
+                    if (orgCount[org] > 1) {
+                        item.classList.add('border-red-500', 'bg-red-50');
+                        if (!item.querySelector('.alert-mark')) {
+                            const alertMark = document.createElement('span');
+                            alertMark.className = 'alert-mark text-red-500 text-xs font-bold ml-2';
+                            alertMark.innerText = '⚠️ 同門近接';
+                            item.firstElementChild.appendChild(alertMark);
+                        }
+                    }
+                });
+            });
+        };
+
+        lists.forEach(list => {
+            new Sortable(list, {
+                group: 'tournament',
+                animation: 150,
+                ghostClass: 'opacity-40',
+                onEnd: function () {
+                    refreshBracketIndexAndCheck();
+                }
+            });
+        });
+
+        // === 5. 確定保存のイベント処理 ===
+        document.getElementById('saveBtn').addEventListener('click', async () => {
+            const category = document.getElementById('categorySelect').value;
+            
+            const leftItems = Array.from(document.getElementById('leftBracket').children).map(li => ({
+                team_name: li.getAttribute('data-team'),
+                organization: li.getAttribute('data-org')
+            }));
+            const rightItems = Array.from(document.getElementById('rightBracket').children).map(li => ({
+                team_name: li.getAttribute('data-team'),
+                organization: li.getAttribute('data-org')
+            }));
+
+            const finalSortedTeams = [...leftItems, ...rightItems];
+
+            if (finalSortedTeams.length < 2) {
+                alert("決勝トーナメントに進出するチーム数が足りません。左右の山にチームを配置してください。");
+                return;
+            }
+
+            if (!confirm(`現在配置されている ${finalSortedTeams.length} チームで決勝トーナメントを確定保存します。よろしいですか？`)) {
+                return;
+            }
+
+            const matches = [];
+            let matchIndex = 1;
+            for (let i = 0; i < finalSortedTeams.length; i += 2) {
+                const teamA = finalSortedTeams[i].team_name;
+                const teamB = finalSortedTeams[i + 1] ? finalSortedTeams[i + 1].team_name : '（シード）';
+
+                matches.push({
+                    category: category,
+                    stage: '決勝トーナメント',
+                    title: `決勝T 1回戦 第${matchIndex}試合`,
+                    teamA: teamA,
+                    teamB: teamB,
+                    scoreA: 0,
+                    scoreB: 0,
+                    status: teamB === '（シード）' ? 'finished' : 'scheduled', 
+                    details: []
+                });
+                matchIndex++;
+            }
+
+            try {
+                const btn = document.getElementById('saveBtn');
+                btn.innerText = '配信中...';
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                btn.style.pointerEvents = 'none';
+
+                const res = await fetch('/api/tournament/save_final', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category, matches })
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    alert(`🏆 決勝トーナメント表を確定しました！\n観客画面にリアルタイム配信しました。`);
+                    
+                    // 🌟【追加機能】確定が成功したら、入力画面へのジャンプボタンを動的に表示！
+                    const jumpBtn = document.getElementById('jumpToStep3Btn');
+                    if (jumpBtn) {
+                        jumpBtn.classList.remove('hidden'); // ボタンを表示
+                    }
+                } else {
+                    alert('❌ 保存エラー: ' + result.error);
+                }
+            } catch (err) {
+                console.error(err);
+                alert('通信エラーが発生しました。');
+            } finally {
+                const btn = document.getElementById('saveBtn');
+                btn.innerText = 'この配置でトーナメント表を確定';
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                btn.style.pointerEvents = 'auto';
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadCategoryTeams();
+        });
+    </script>
+</body>
+</html>

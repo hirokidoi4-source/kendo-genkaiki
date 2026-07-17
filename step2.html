@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>組み合わせ管理 - 少年剣道大会</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans p-6">
+
+    <div class="max-w-6xl mx-auto">
+        <div class="flex justify-between items-end mb-6 border-b pb-4">
+            <h1 class="text-2xl font-bold text-indigo-900">📊 組み合わせ管理画面（予選リーグ）</h1>
+            <div class="text-sm">
+                <span id="saveBtn" class="bg-indigo-600 text-white px-3 py-1 rounded shadow cursor-pointer hover:bg-indigo-700 transition">組み合わせを確定して保存</span>
+            </div>
+        </div>
+
+        <div class="bg-white p-4 rounded shadow mb-6 flex justify-between items-center">
+            <p class="text-gray-600 text-sm">
+                💡 チームをドラッグ＆ドロップして、リーグの配置を自由に入れ替えることができます。<br>
+                <span class="text-red-500 font-bold">※同じリーグ内に同一の「母体団体」が存在する場合、赤く警告されます。</span>
+            </p>
+            <select id="categorySelect" onchange="loadTeamsAndRender()" class="border border-gray-300 rounded p-2 text-sm focus:ring-indigo-500">
+                <option value="low_elem">① 小学生低学年</option>
+                <option value="elem">② 小学生団体</option>
+                <option value="mid">③ 中学生団体</option>
+                <option value="mid_girls">④ 中学女子団体</option>
+            </select>
+        </div>
+
+        <div id="leagueContainer" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-white rounded-lg shadow border border-gray-200">
+                <div class="bg-indigo-100 text-indigo-800 font-bold px-4 py-2 rounded-t-lg border-b border-indigo-200">Aリーグ</div>
+                <ul id="leagueA" class="sortable-list min-h-[150px] p-2 space-y-2"></ul>
+            </div>
+
+            <div class="bg-white rounded-lg shadow border border-gray-200">
+                <div class="bg-indigo-100 text-indigo-800 font-bold px-4 py-2 rounded-t-lg border-b border-indigo-200">Bリーグ</div>
+                <ul id="leagueB" class="sortable-list min-h-[150px] p-2 space-y-2"></ul>
+            </div>
+
+            <div class="bg-white rounded-lg shadow border border-gray-200">
+                <div class="bg-indigo-100 text-indigo-800 font-bold px-4 py-2 rounded-t-lg border-b border-indigo-200">Cリーグ</div>
+                <ul id="leagueC" class="sortable-list min-h-[150px] p-2 space-y-2"></ul>
+            </div>
+            
+            <div class="bg-gray-200 rounded-lg shadow border border-gray-300 border-dashed md:col-span-3">
+                <div class="bg-gray-300 text-gray-700 font-bold px-4 py-2 rounded-t-lg">🗑️ 欠場・除外エリア（ここにあるチームは対戦カードから除外されます）</div>
+                <ul id="leagueTrash" class="sortable-list min-h-[100px] p-2 space-y-2"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const lists = document.querySelectorAll('.sortable-list');
+
+            // === 1. チームデータの読み込みと画面への配置 ===
+            window.loadTeamsAndRender = async () => {
+                const category = document.getElementById('categorySelect').value;
+                try {
+                    const res = await fetch('/api/teams');
+                    const allTeams = await res.json();
+                    
+                    // 選択した部門のチームだけを抽出 (low_elem, elem など)
+                    const teams = allTeams.filter(t => t.category === category);
+
+                    // 画面を一旦すべてクリア（ダミーデータ等も完全に消えます）
+                    const leagues = ['leagueA', 'leagueB', 'leagueC'];
+                    leagues.forEach(id => document.getElementById(id).innerHTML = '');
+                    document.getElementById('leagueTrash').innerHTML = '';
+
+                    if (teams.length === 0) {
+                        console.log("選択した部門のチームが見つかりません。先にCSVインポートを行ってください。");
+                        return;
+                    }
+
+                    // A, B, Cリーグに順番にチームを均等配置
+                    teams.forEach((team, index) => {
+                        const targetId = leagues[index % 3]; // 3つのリーグに均等配置
+                        const li = document.createElement('li');
+                        li.className = "bg-gray-50 border border-gray-300 p-3 rounded cursor-move hover:bg-indigo-50 transition shadow-sm";
+                        li.setAttribute('data-org', team.organization);
+                        li.setAttribute('data-team', team.team_name);
+                        li.innerHTML = `
+                            <div class="font-bold text-lg">${team.team_name}</div>
+                            <div class="text-xs text-gray-500">母体: ${team.organization}</div>
+                        `;
+                        document.getElementById(targetId).appendChild(li);
+                    });
+
+                    checkDuplicates();
+                } catch (err) {
+                    console.error("チーム取得エラー", err);
+                    alert("サーバーからチームデータを取得できませんでした。");
+                }
+            };
+
+            // === 2. 同一母体の重複警告チェック ===
+            const checkDuplicates = () => {
+                lists.forEach(list => {
+                    if (list.id === 'leagueTrash') return; // 除外エリアは重複警告しない
+
+                    const items = Array.from(list.children);
+                    const orgCount = {};
+                    
+                    // スタイルを一度リセット
+                    items.forEach(item => {
+                        item.classList.remove('border-red-500', 'bg-red-50');
+                        item.classList.add('border-gray-300', 'bg-gray-50');
+                        const alertMark = item.querySelector('.alert-mark');
+                        if (alertMark) alertMark.remove();
+                    });
+
+                    // 各母体団体(data-org)の数をカウント
+                    items.forEach(item => {
+                        const org = item.getAttribute('data-org');
+                        orgCount[org] = (orgCount[org] || 0) + 1;
+                    });
+
+                    // 同一リーグ内に2チーム以上同じ母体があれば赤枠と警告文字を出す
+                    items.forEach(item => {
+                        const org = item.getAttribute('data-org');
+                        if (orgCount[org] > 1) {
+                            item.classList.remove('border-gray-300', 'bg-gray-50');
+                            item.classList.add('border-red-500', 'bg-red-50');
+                            
+                            if (!item.querySelector('.alert-mark')) {
+                                const alertMark = document.createElement('span');
+                                alertMark.className = 'alert-mark text-red-500 text-xs font-bold float-right';
+                                alertMark.innerText = '⚠️ 同門対決';
+                                item.firstElementChild.appendChild(alertMark);
+                            }
+                        }
+                    });
+                });
+            };
+
+            // === 3. SortableJSの初期化（ドラッグ＆ドロップの設定） ===
+            lists.forEach(list => {
+                new Sortable(list, {
+                    group: 'shared',         // すべてのリスト間を相互に行き来できるようにする
+                    animation: 150,          // アニメーション速度
+                    ghostClass: 'bg-indigo-200', // 移動中の仮位置のカラー
+                    onEnd: function () {
+                        checkDuplicates();   // 入れ替えが終わったら即座に重複警告を計算
+                    }
+                });
+            });
+
+            // === 4. 「組み合わせを確定して保存」ボタンの処理 ===
+            document.getElementById('saveBtn').addEventListener('click', async () => {
+                const category = document.getElementById('categorySelect').value;
+                const matches = [];
+
+                // 各リーグ内のチームリストを走査して総当たりを作成する
+                const processLeague = (leagueId, leagueName) => {
+                    const items = Array.from(document.getElementById(leagueId).children);
+                    const teamsInLeague = items.map(li => ({
+                        team_name: li.getAttribute('data-team'),
+                        organization: li.getAttribute('data-org')
+                    }));
+
+                    let matchCount = 1;
+                    // 各リーグごとにリーグ内総当たり戦を組み立てる（n * (n - 1) / 2）
+                    for (let i = 0; i < teamsInLeague.length; i++) {
+                        for (let j = i + 1; j < teamsInLeague.length; j++) {
+                            const isSameOrg = teamsInLeague[i].organization === teamsInLeague[j].organization;
+                            matches.push({
+                                category: category,
+                                stage: '予選リーグ',
+                                title: `${leagueName} 第${matchCount}試合`,
+                                teamA: teamsInLeague[i].team_name,
+                                teamB: teamsInLeague[j].team_name,
+                                scoreA: 0,
+                                scoreB: 0,
+                                status: 'scheduled',
+                                details: { same_org: isSameOrg, league: leagueName, round: matchCount }
+                            });
+                            matchCount++;
+                        }
+                    }
+                };
+
+                // 各リーグの現状のチーム順から対戦表を抽出
+                processLeague('leagueA', 'Aリーグ');
+                processLeague('leagueB', 'Bリーグ');
+                processLeague('leagueC', 'Cリーグ');
+
+                if (matches.length === 0) {
+                    alert('リーグ内にチームが配置されていません。チームを各リーグに入れてください。');
+                    return;
+                }
+
+                // 安全用の確定ダイアログ
+                const totalTeamsCount = 
+                    document.getElementById('leagueA').children.length +
+                    document.getElementById('leagueB').children.length +
+                    document.getElementById('leagueC').children.length;
+
+                if (!confirm(`現在配置されている ${totalTeamsCount} チームから、各リーグ内での総当たり戦（計 ${matches.length} 試合）を確定し、データベースに保存しますか？`)) {
+                    return;
+                }
+
+                try {
+                    const btn = document.getElementById('saveBtn');
+                    btn.innerText = '保存中...';
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+                    const res = await fetch('/api/tournament/save_league', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ category, matches })
+                    });
+                    const result = await res.json();
+                    
+                    if (result.success) {
+                      // 修正後
+                      alert('🎉 予選リーグの組み合わせが確定しました！試合結果入力画面へ移動します。');
+                      window.location.href = '/step3.html'; // 直接、入力パネルへジャンプ！
+                    } else {
+                        alert('❌ 保存エラー: ' + result.error);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('❌ サーバーへの送信中に通信エラーが発生しました。');
+                } finally {
+                    const btn = document.getElementById('saveBtn');
+                    btn.innerText = '組み合わせを確定して保存';
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            });
+
+            // 最初に自動で読み込みを実行
+            loadTeamsAndRender();
+        });
+    </script>
+</body>
+</html>
