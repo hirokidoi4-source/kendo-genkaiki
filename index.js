@@ -249,13 +249,30 @@ app.post('/api/tournament/generate', async (req, res) => {
         if (tError) return res.status(500).json({ error: tError.message });
         if (!teams || teams.length < 2) return res.status(400).json({ error: 'チーム数が足りません' });
 
+        // 同門隔離されたチーム配列を取得
         const optimizedTeams = optimizeTeamDistribution(teams);
         let matchesToInsert = [];
 
         if (type === 'league') {
-            const groupCount = Math.ceil(optimizedTeams.length / 3);
+            const totalTeams = optimizedTeams.length;
+
+            // 🌟 3チームリーグと4チームリーグの数を自動計算するロジック
+            // 基本を3チーム構成とし、余りを4チーム構成に割り振る
+            let count4 = totalTeams % 3;
+            let count3 = Math.floor(totalTeams / 3) - count4;
+
+            if (count3 < 0) {
+                // チーム数が極端に少ない（例: 4チームや5チームなど）場合の調整
+                if (totalTeams === 4) {
+                    count4 = 1; count3 = 0;
+                } else if (totalTeams === 5) {
+                    count4 = 1; count3 = 1; // 3チーム×1、4チーム×1（1枠不戦勝枠で補う）
+                } else {
+                    count4 = 0; count3 = Math.ceil(totalTeams / 3);
+                }
+            }
+
             const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-            
             const getGroupName = (index) => {
                 if (index < 26) return `${alphabet[index]}リーグ`;
                 const firstChar = alphabet[Math.floor(index / 26) - 1];
@@ -263,38 +280,63 @@ app.post('/api/tournament/generate', async (req, res) => {
                 return `${firstChar}${secondChar}リーグ`;
             };
 
-            for (let g = 0; g < groupCount; g++) {
-                const groupName = getGroupName(g);
-                const curLeagueTeams = optimizedTeams.slice(g * 3, g * 3 + 3);
+            let teamIndex = 0;
+            let currentGroupIdx = 0;
 
-                while (curLeagueTeams.length < 3) {
-                    curLeagueTeams.push({ team_name: '（不戦勝枠）', organization: 'なし' });
-                }
+            // リーグを分割・生成する共通関数
+            const buildLeagueGroups = (groupCount, leagueSize) => {
+                for (let g = 0; g < groupCount; g++) {
+                    const groupName = getGroupName(currentGroupIdx);
+                    let curLeagueTeams = optimizedTeams.slice(teamIndex, teamIndex + leagueSize);
 
-                let matchCount = 1;
-                for (let i = 0; i < curLeagueTeams.length; i++) {
-                    for (let j = i + 1; j < curLeagueTeams.length; j++) {
-                        const teamA = curLeagueTeams[i].team_name;
-                        const teamB = curLeagueTeams[j].team_name;
-                        const isBye = teamA === '（不戦勝枠）' || teamB === '（不戦勝枠）';
-                        const isSameOrg = curLeagueTeams[i].organization === curLeagueTeams[j].organization;
-
-                        matchesToInsert.push({
-                            category,
-                            stage: '予選リーグ',
-                            title: `${groupName} 第${matchCount}試合`,
-                            teamA,
-                            teamB,
-                            scoreA: teamA === '（不戦勝枠）' ? 0 : (isBye ? 1 : 0),
-                            scoreB: teamB === '（不戦勝枠）' ? 0 : (isBye ? 1 : 0),
-                            status: isBye ? 'finished' : 'scheduled',
-                            details: { same_org: isSameOrg, league: groupName, round: matchCount }
-                        });
-                        matchCount++;
+                    // 割り当てられたチーム数が足りない場合は不戦勝枠で埋める
+                    while (curLeagueTeams.length < leagueSize) {
+                        curLeagueTeams.push({ team_name: '（不戦勝枠）', organization: 'なし' });
                     }
+
+                    // 3チームリーグは1位のみ（1）、4チームリーグは2位まで（2）進出 🎯
+                    const maxPromoted = leagueSize === 4 ? 2 : 1;
+
+                    let matchCount = 1;
+                    for (let i = 0; i < curLeagueTeams.length; i++) {
+                        for (let j = i + 1; j < curLeagueTeams.length; j++) {
+                            const teamA = curLeagueTeams[i].team_name;
+                            const teamB = curLeagueTeams[j].team_name;
+                            const isBye = teamA === '（不戦勝枠）' || teamB === '（不戦勝枠）';
+                            const isSameOrg = curLeagueTeams[i].organization === curLeagueTeams[j].organization;
+
+                            matchesToInsert.push({
+                                category,
+                                stage: '予選リーグ',
+                                title: `${groupName} 第${matchCount}試合`,
+                                teamA,
+                                teamB,
+                                scoreA: teamA === '（不戦勝枠）' ? 0 : (isBye ? 1 : 0),
+                                scoreB: teamB === '（不戦勝枠）' ? 0 : (isBye ? 1 : 0),
+                                status: isBye ? 'finished' : 'scheduled',
+                                // detailsの中にリーグ情報と進出可能枠数をしっかり保存 💾
+                                details: { 
+                                    same_org: isSameOrg, 
+                                    league: groupName, 
+                                    round: matchCount,
+                                    league_size: leagueSize,
+                                    max_promoted: maxPromoted 
+                                }
+                            });
+                            matchCount++;
+                        }
+                    }
+                    teamIndex += leagueSize;
+                    currentGroupIdx++;
                 }
-            }
+            };
+
+            // 計算された数に基づいて、3チームリーグと4チームリーグを順に生成
+            if (count3 > 0) buildLeagueGroups(count3, 3);
+            if (count4 > 0) buildLeagueGroups(count4, 4);
+
         } else {
+            // 決勝トーナメント生成（既存のロジックをそのまま維持）
             for (let i = 0; i < optimizedTeams.length; i += 2) {
                 const teamA = optimizedTeams[i];
                 const teamB = optimizedTeams[i + 1] || { team_name: '（シード）', organization: '' };
@@ -313,6 +355,7 @@ app.post('/api/tournament/generate', async (req, res) => {
             }
         }
 
+        // 古い対戦データの削除と新規インサート
         if (type === 'league') {
             await supabase.from('matches').delete().eq('category', category).eq('stage', '予選リーグ');
         } else {
