@@ -189,6 +189,39 @@
             select.className = 'team-slot-select w-full border p-1 rounded text-xs bg-white focus:ring-indigo-500 font-medium';
             select.innerHTML = '<option value="">-- 未選出（空枠） --</option>';
 
+            // 🌟 【改善】プルダウンの変更を、下の山へピンポイントで連動させる処理
+            select.addEventListener('change', () => {
+                const selectedOpt = select.options[select.selectedIndex];
+                const newTeamName = select.value;
+                const newOrg = selectedOpt ? selectedOpt.getAttribute('data-org') : '';
+
+                // 下の山（左右のブロック）の中から、このスロット番号(id)に対応する要素を探して書き換える
+                const targetLi = document.querySelector(`li[data-slot-source="${id}"]`);
+                if (targetLi) {
+                    if (newTeamName) {
+                        // チーム名を更新
+                        targetLi.setAttribute('data-team', newTeamName);
+                        targetLi.setAttribute('data-org', newOrg);
+                        targetLi.innerHTML = `
+                            <div>
+                                <span class="badge text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-1 rounded mr-2">枠 -</span>
+                                <span class="font-bold text-base text-gray-900">${newTeamName}</span>
+                            </div>
+                            <span class="text-xs text-gray-400">母体: ${newOrg}</span>
+                        `;
+                    } else {
+                        // 空枠が選ばれた場合は要素を削除
+                        targetLi.remove();
+                    }
+                    // 枠番号の再計算と、同門チェックを実行
+                    refreshBracketIndexAndCheck();
+                } else {
+                    // もし下の山にまだ配置されていない場合は、手動選択後に一度「自動抽選」を押してもらうか、
+                    // あるいは自動的に左の山へ追加する安全策として、再抽選を走らせる
+                    autoDrawFinals();
+                }
+            });
+
             teams.forEach(team => {
                 const opt = document.createElement('option');
                 opt.value = team.team_name;
@@ -211,6 +244,7 @@
                 if (select.value) {
                     const selectedOpt = select.options[select.selectedIndex];
                     selectedTeams.push({
+                        slot_id: select.id, // 🌟 どのスロットから選ばれたかを追跡
                         team_name: select.value,
                         organization: selectedOpt.getAttribute('data-org')
                     });
@@ -256,6 +290,7 @@
                 li.className = "bg-white border border-gray-300 p-3 rounded cursor-move hover:border-indigo-500 hover:shadow-md transition flex items-center justify-between";
                 li.setAttribute('data-org', team.organization);
                 li.setAttribute('data-team', team.team_name);
+                li.setAttribute('data-slot-source', team.slot_id || ''); // 🌟 元のスロットIDを保持
                 li.innerHTML = `
                     <div>
                         <span class="badge text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-1 rounded mr-2">枠 -</span>
