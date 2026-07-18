@@ -15,6 +15,37 @@
             transition: all 0.3s;
             box-shadow: 0 10px 15px -3px rgba(234, 179, 8, 0.3);
         }
+
+        /* 🏆 【新規追加】ツリー状（ブラケット）デザイン用CSS */
+        .tournament-tree-container {
+            display: flex;
+            gap: 2rem;
+            padding: 1rem;
+            min-width: max-content;
+        }
+        .tournament-round-column {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            min-width: 220px;
+        }
+        .bracket-match-node {
+            position: relative;
+            margin: 1rem 0;
+        }
+        /* 結合線の基本スタイル */
+        .bracket-match-node::after {
+            content: "";
+            position: absolute;
+            right: -1rem;
+            top: 50%;
+            width: 1rem;
+            height: 2px;
+            background-color: #cbd5e1;
+        }
+        .tournament-round-column:last-child .bracket-match-node::after {
+            display: none; /* 決勝戦より右側には線を引かない */
+        }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
@@ -73,7 +104,7 @@
     </div>
 
     <!-- 試合カード・ツリー描画メインエリア -->
-    <main class="p-4 max-w-5xl mx-auto pb-20" id="mainContent">
+    <main class="p-4 w-full mx-auto pb-20" id="mainContent">
     </main>
 
     <!-- モーダル詳細 -->
@@ -110,6 +141,14 @@
                 const resResults = await fetch('/api/results');
                 const finalData = await resResults.json();
                 if (finalData.title) document.getElementById('tournamentTitle').innerText = finalData.title + ' 速報';
+
+                // 優勝確定時の処理
+                if (finalData.status === 'finished' && finalData.winner && finalData.winner !== '-') {
+                    document.getElementById('resWinner').innerText = finalData.winner;
+                    document.getElementById('finalResults').classList.remove('hidden');
+                } else {
+                    document.getElementById('finalResults').classList.add('hidden');
+                }
 
                 const resMatches = await fetch('/api/matches');
                 allMatches = await resMatches.json();
@@ -190,7 +229,11 @@
             const content = document.getElementById('mainContent');
             content.innerHTML = '';
 
+            // =================================================================
+            // 📊 予選リーグ：従来通りのカードリスト形式表示
+            // =================================================================
             if (currentStage === 'league') {
+                document.getElementById('mainContent').className = "p-4 max-w-5xl mx-auto pb-20";
                 const filteredMatches = allMatches.filter(m => m.category === currentCategory && m.stage === '予選リーグ');
                 if (filteredMatches.length === 0) {
                     content.innerHTML = `<div class="bg-white rounded-lg shadow-sm border p-8 text-center text-gray-400 font-bold">予選組み合わせがまだ登録されていません。</div>`;
@@ -201,6 +244,10 @@
                     const card = createMatchCard(match);
                     content.appendChild(card);
                 });
+
+            // =================================================================
+            // 🏆 決勝トーナメント：【刷新】横スクロール式ブラケット・ツリーUI
+            // =================================================================
             } else {
                 const finalMatches = allMatches.filter(m => m.category === currentCategory && m.stage === '決勝トーナメント');
                 if (finalMatches.length === 0) {
@@ -208,26 +255,15 @@
                     return;
                 }
 
-                // 外側のメインコンテナ自体の幅制限を適切に設定
-                document.getElementById('mainContent').className = "p-4 w-full max-w-3xl mx-auto pb-20";
+                // 横スクロール用のラッパーコンテナをインジェクション
+                document.getElementById('mainContent').className = "p-4 w-full overflow-x-auto no-scrollbar pb-20";
 
-                // 🌟 上部に「決勝トーナメント一覧」の案内を追加
-                const headerDiv = document.createElement('div');
-                headerDiv.className = "text-center font-black text-sm text-indigo-900 mb-6 border-b-2 border-dashed pb-3 flex justify-center items-center gap-1.5";
-                headerDiv.innerHTML = `
-                    <span>📊 決勝トーナメント 進行状況一覧</span>
-                    <span class="bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded-full">タップで詳細スコア表示</span>
-                `;
-                content.appendChild(headerDiv);
-
-                // 🌟 試合を「決勝」「準決勝」「3回戦」「2回戦」「1回戦」などのグループに自動分類します
                 const stagesGroup = {
-                    '決勝': [],
-                    '準決勝': [],
-                    '4回戦': [],
-                    '3回戦': [],
-                    '2回戦': [],
                     '1回戦': [],
+                    '2回戦': [],
+                    '3回戦': [],
+                    '準決勝': [],
+                    '決勝': [],
                     'その他': []
                 };
 
@@ -236,8 +272,6 @@
                         stagesGroup['決勝'].push(match);
                     } else if (match.title.includes('準決勝')) {
                         stagesGroup['準決勝'].push(match);
-                    } else if (match.title.includes('4回戦')) {
-                        stagesGroup['4回戦'].push(match);
                     } else if (match.title.includes('3回戦')) {
                         stagesGroup['3回戦'].push(match);
                     } else if (match.title.includes('2回戦')) {
@@ -249,42 +283,65 @@
                     }
                 });
 
-                // 各グループ内を試合番号順にソートするための比較関数
                 const sortByMatchNum = (a, b) => {
                     const numA = parseInt(a.title.match(/\d+/)?.[0] || 0);
                     const numB = parseInt(b.title.match(/\d+/)?.[0] || 0);
                     return numA - numB;
                 };
 
-                // 🌟 決勝から順に画面にグループごとの見出しを付けて並べていきます
-                const order = ['決勝', '準決勝', '4回戦', '3回戦', '2回戦', '1回戦', 'その他'];
+                // ツリー全体を包むフレックスコンテナを生成
+                const treeContainer = document.createElement('div');
+                treeContainer.className = "tournament-tree-container";
+
+                // 進行フェーズ順（左から右へ段階的に進行）にカラムを作成
+                const order = ['1回戦', '2回戦', '3回戦', '準決勝', '決勝'];
                 
                 order.forEach(stageName => {
                     const matches = stagesGroup[stageName];
-                    if (matches.length > 0) {
+                    if (matches && matches.length > 0) {
                         matches.sort(sortByMatchNum);
 
-                        // 回戦ごとの見出しデザインを生成
-                        const sectionHeader = document.createElement('div');
-                        let badgeColor = "bg-slate-200 text-slate-800";
-                        let icon = "🛡️";
+                        const column = document.createElement('div');
+                        column.className = "tournament-round-column";
 
-                        if (stageName === '決勝') { badgeColor = "bg-amber-100 text-amber-800 border border-amber-300"; icon = "🏆"; }
-                        else if (stageName === '準決勝') { badgeColor = "bg-indigo-100 text-indigo-800"; icon = "⚔️"; }
+                        // カラムヘッダー（回戦タイトル）
+                        const colHeader = document.createElement('div');
+                        colHeader.className = "text-center font-black text-xs text-indigo-900 bg-indigo-100 rounded py-1 mb-2 shadow-sm sticky top-0";
+                        colHeader.innerText = stageName;
+                        column.appendChild(colHeader);
 
-                        sectionHeader.className = `flex items-center gap-2 font-black text-base mt-8 mb-4 px-3 py-1.5 rounded-lg ${badgeColor} w-max shadow-sm`;
-                        sectionHeader.innerHTML = `<span>${icon} ${stageName}</span><span class="text-xs opacity-75">(${matches.length}試合)</span>`;
-                        content.appendChild(sectionHeader);
-
-                        // その回戦の試合カードを並べる
+                        // 各試合ノードをカラムに追加
                         matches.forEach(match => {
+                            const node = document.createElement('div');
+                            node.className = "bracket-match-node";
+                            
                             const card = createMatchCard(match);
-                            content.appendChild(card);
+                            // ブラケット表示用に少し幅をスリムに微調整
+                            card.classList.remove('mb-4');
+                            card.classList.add('w-[230px]', 'mx-auto', 'shadow-sm');
+                            
+                            node.appendChild(card);
+                            column.appendChild(node);
                         });
+
+                        treeContainer.appendChild(column);
                     }
                 });
+
+                // その他に分類された試合（3位決定戦などがあれば）を下部に添える
+                content.appendChild(treeContainer);
+                
+                if (stagesGroup['その他'].length > 0) {
+                    const extraArea = document.createElement('div');
+                    extraArea.className = "mt-8 border-t pt-4 max-w-xl mx-auto";
+                    stagesGroup['その他'].forEach(match => {
+                        extraArea.appendChild(createMatchCard(match));
+                    });
+                    content.appendChild(extraArea);
+                }
             }
         };
+
         const createMatchCard = (match) => {
             const card = document.createElement('div');
             card.className = 'match-card bg-white rounded-xl shadow-md border-2 border-gray-200 mb-4 overflow-hidden cursor-pointer hover:border-indigo-400 hover:shadow-lg transition-all duration-200';
@@ -297,28 +354,31 @@
             let scoreColor = 'text-indigo-600';
 
             if (match.status === 'finished') {
-                statusBadge = `<span class="bg-blue-600 text-white text-xs px-2.5 py-0.5 rounded font-black">試合終了</span>`;
+                statusBadge = `<span class="bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">終了</span>`;
                 scoreText = `${match.scoreA} - ${match.scoreB}`;
-                scoreColor = 'text-gray-900 font-black text-2xl';
+                scoreColor = 'text-gray-900 font-black text-xl';
             } else if (match.status === 'ongoing') {
-                statusBadge = `<span class="bg-red-500 text-white text-xs px-2.5 py-0.5 rounded font-black animate-pulse">試合中 ⚔️</span>`;
+                statusBadge = `<span class="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded font-black animate-pulse">試合中</span>`;
                 scoreText = `${match.scoreA} - ${match.scoreB}`;
-                scoreColor = 'text-red-600 font-black text-2xl';
+                scoreColor = 'text-red-600 font-black text-xl';
             } else {
-                statusBadge = `<span class="bg-gray-400 text-white text-xs px-2.5 py-0.5 rounded font-black">試合前</span>`;
+                statusBadge = `<span class="bg-gray-400 text-white text-[10px] px-1.5 py-0.5 rounded font-black">試合前</span>`;
             }
 
             card.innerHTML = `
-                <div class="bg-gray-50 px-4 py-2 border-b text-sm text-gray-600 font-black flex justify-between items-center">
-                    <span>${match.title}</span>
+                <div class="bg-gray-50 px-3 py-1 border-b text-xs text-gray-600 font-black flex justify-between items-center">
+                    <span class="truncate max-w-[140px]">${match.title}</span>
                     ${statusBadge}
                 </div>
-                <div class="p-4 flex justify-between items-center text-center">
-                    <div class="w-5/12 font-black text-lg text-gray-800 truncate">${match.teamA}</div>
-                    <div class="w-2/12 flex flex-col items-center">
-                        <span class="${scoreColor} px-2 py-0.5 bg-gray-50 border rounded-lg shadow-inner min-w-[60px] text-center">${scoreText}</span>
+                <div class="p-3 space-y-1.5 text-left text-sm">
+                    <div class="flex justify-between items-center font-black text-gray-800 border-b border-gray-50 pb-1">
+                        <span class="truncate max-w-[150px]">${match.teamA}</span>
+                        <span class="${match.status !== 'scheduled' && match.scoreA >= match.scoreB ? 'text-indigo-700 text-base' : 'text-gray-400'}">${match.status !== 'scheduled' ? match.scoreA : ''}</span>
                     </div>
-                    <div class="w-5/12 font-black text-lg text-gray-800 truncate">${match.teamB}</div>
+                    <div class="flex justify-between items-center font-black text-gray-800">
+                        <span class="truncate max-w-[150px]">${match.teamB}</span>
+                        <span class="${match.status !== 'scheduled' && match.scoreB >= match.scoreA ? 'text-indigo-700 text-base' : 'text-gray-400'}">${match.status !== 'scheduled' ? match.scoreB : ''}</span>
+                    </div>
                 </div>
             `;
             return card;
@@ -400,7 +460,6 @@
                 }
             });
 
-            // 🌟【親切機能】検索でヒットした最初のカードの位置まで画面を自動スクロールさせる
             if (firstFoundCard) {
                 firstFoundCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
             }

@@ -102,7 +102,7 @@
         </div>
     </div>
 
-    <script>
+<script>
     // CSVを読み込んでJSONでサーバーに投げる処理
     async function handleCSVImport() {
         const fileInput = document.getElementById('csvFile');
@@ -149,11 +149,26 @@
         reader.readAsText(file, 'UTF-8');
     }
 
-    // 組み合わせ生成リクエスト
+    // 組み合わせ生成リクエスト（UI文言ブラッシュアップ版）
     async function generateMatches(type) {
-        const category = document.getElementById('selectCategory').value;
+        const categorySelect = document.getElementById('selectCategory');
+        if (!categorySelect) return alert('❌ 部門選択ボックスが見つかりません');
+
+        const category = categorySelect.value;
+        // セレクトボックスの表示テキスト（例: 小学生団体）を取得して確認文言に使う
+        const categoryText = categorySelect.options[categorySelect.selectedIndex].text;
         const typeStr = type === 'league' ? '予選リーグ' : '決勝トーナメント';
-        if(!confirm(`⚠️ ${category} の【${typeStr}】を自動生成しますか？\n（まだ対戦が始まっていない既存のカードは上書きされます）`)) return;
+
+        // 大会当日の誤操作を防ぐための明確な確認メッセージ
+        const confirmMsg = `【組み合わせ自動生成の確認】\n\n` +
+                           `部門: ${categoryText}\n` +
+                           `種別: ${typeStr}\n\n` +
+                           `⚠️ 注意 ⚠️\n` +
+                           `現在保存されている「${categoryText}」の「${typeStr}」データは削除され、新しい組み合わせで上書きされます。\n` +
+                           `※他の部門（クラス）の試合データには一切影響しません。\n\n` +
+                           `この内容で再生成を実行しますか？`;
+
+        if (!confirm(confirmMsg)) return;
 
         try {
             const res = await fetch('/api/tournament/generate', {
@@ -162,12 +177,12 @@
                 body: JSON.stringify({ category, type })
             });
             const result = await res.json();
-            if(result.success) {
+            if (result.success) {
                 alert('🎯 ' + result.message);
             } else {
                 alert('❌ 生成エラー: ' + result.error);
             }
-        } catch(err) {
+        } catch (err) {
             alert('❌ 通信エラーが発生しました。');
         }
     }

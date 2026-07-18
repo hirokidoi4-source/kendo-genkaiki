@@ -249,30 +249,38 @@ app.post('/api/teams/import', async (req, res) => {
     }
 });
 
+// =================================================================
+// ⚔️ 公正なトーナメント配置・部門別生成 API
+// =================================================================
 app.post('/api/tournament/generate', async (req, res) => {
     const { category, type } = req.body;
     try {
-        const { data: teams, error: tError } = await supabase.from('teams').select('*').eq('category', category);
+        // 1. 対象部門のエントリーチームのみをSupabaseから取得
+        const { data: teams, error: tError } = await supabase
+            .from('teams')
+            .select('*')
+            .eq('category', category);
+
         if (tError) return res.status(500).json({ error: tError.message });
         if (!teams || teams.length < 2) return res.status(400).json({ error: 'チーム数が足りません' });
 
-        const optimizedTeams = optimizeTeamDistribution(teams);
         let matchesToInsert = [];
 
+        // ==========================================
+        // 📊 予選リーグの自動生成ロジック
+        // ==========================================
         if (type === 'league') {
+            // 同門をできる限りバラけさせたチームリストを取得
+            const optimizedTeams = optimizeTeamDistribution(teams);
             const totalTeams = optimizedTeams.length;
 
             let count4 = totalTeams % 3;
             let count3 = Math.floor(totalTeams / 3) - count4;
 
             if (count3 < 0) {
-                if (totalTeams === 4) {
-                    count4 = 1; count3 = 0;
-                } else if (totalTeams === 5) {
-                    count4 = 1; count3 = 1; 
-                } else {
-                    count4 = 0; count3 = Math.ceil(totalTeams / 3);
-                }
+                if (totalTeams === 4) { count4 = 1; count3 = 0; } 
+                else if (totalTeams === 5) { count4 = 1; count3 = 1; } 
+                else { count4 = 0; count3 = Math.ceil(totalTeams / 3); }
             }
 
             const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -296,8 +304,8 @@ app.post('/api/tournament/generate', async (req, res) => {
                     }
 
                     const maxPromoted = leagueSize === 4 ? 2 : 1;
-
                     let matchCount = 1;
+
                     for (let i = 0; i < curLeagueTeams.length; i++) {
                         for (let j = i + 1; j < curLeagueTeams.length; j++) {
                             const teamA = curLeagueTeams[i].team_name;
@@ -333,45 +341,100 @@ app.post('/api/tournament/generate', async (req, res) => {
             if (count3 > 0) buildLeagueGroups(count3, 3);
             if (count4 > 0) buildLeagueGroups(count4, 4);
 
+        // ==========================================
+        // 🏆 公正な決勝トーナメント自動生成ロジック (課題B・C解決)
+        // ==========================================
         } else {
-            // 🌟①【改善】決勝トーナメント生成時の配置を左右の山に交互（または均等）に分散させる
-            const halfLength = Math.ceil(optimizedTeams.length / 2);
-            const leftSideTeams = optimizedTeams.slice(0, halfLength);
-            const rightSideTeams = optimizedTeams.slice(halfLength);
+            const orgTeams = [...teams];
+            const N = orgTeams.length;
 
-            // 左の山の試合カード生成
-            for (let i = 0; i < leftSideTeams.length; i += 2) {
-                const teamA = leftSideTeams[i];
-                const teamB = leftSideTeams[i + 1] || { team_name: '（シード）', organization: '' };
-                matchesToInsert.push({
-                    category,
-                    stage: '決勝トーナメント',
-                    title: `1回戦(左) 第${Math.floor(i/2) + 1}試合`,
-                    teamA: teamA.team_name,
-                    teamB: teamB.team_name,
-                    scoreA: 0, scoreB: 0,
-                    status: teamB.team_name === '（シード）' ? 'finished' : 'scheduled',
-                    details: { round: 1, side: 'left', match_index: Math.floor(i/2) }
-                });
+            // 1. トーナメントの基準サイズ（2の乗数: 4, 8, 16, 32, 64...）を決める
+            let T = 2;
+            while (T < N) { T *= 2; }
+
+            // シード数（BYE枠数）の算出
+            const numByes = T - N;
+
+            // 2. 四隅・中心へ均等分散させるためのシード位置ベースのインデックス順を算出
+            // (1位と2位が決勝まで、3位と4位が準決勝まで当たらない古典的配置アルゴリズム)
+            let seedOrder = [0, 1];
+            while (seedOrder.length < T) {
+                const nextOrder = [];
+                const currentLength = seedOrder.length;
+                for (let i = 0; i < currentLength; i++) {
+                    nextOrder.push(seedOrder[i]);
+                    nextOrder.push(currentLength * 2 - 1 - seedOrder[i]);
+                }
+                seedOrder = nextOrder;
             }
 
-            // 右の山の試合カード生成
-            for (let i = 0; i < rightSideTeams.length; i += 2) {
-                const teamA = rightSideTeams[i];
-                const teamB = rightSideTeams[i + 1] || { team_name: '（シード）', organization: '' };
+            // 3. 同門対決の回避とシード分散を考慮したスロット配置
+            // 強いチーム(または予選上位)から順に割り当てるため、同門が連続しないよう一度ソート
+            const sortedTeams = optimizeTeamDistribution(orgTeams);
+            const slots = new Array(T).fill(null);
+
+            // シード枠 (BYE) を配置するスロットを決定 (下位シードから順に四隅へ分散)
+            // seedOrderの数値が大きいスロットをBYE（空枠）として優先指定
+            const byeSlots = seedOrder
+                .map((seed, index) => ({ seed, index }))
+                .sort((a, b) => b.seed - a.seed)
+                .slice(0, numByes)
+                .map(item => item.index);
+
+            let teamIdx = 0;
+            for (let i = 0; i < T; i++) {
+                if (byeSlots.includes(i)) {
+                    slots[i] = { team_name: '（シード）', organization: '' };
+                } else {
+                    slots[i] = sortedTeams[teamIdx++];
+                }
+            }
+
+            // 4. 配置されたスロットから1回戦の対戦カードを綺麗な順序で生成・採番
+            let matchNum = 1;
+            for (let i = 0; i < T; i += 2) {
+                const teamA = slots[i];
+                const teamB = slots[i + 1];
+
+                const isByeA = teamA.team_name === '（シード）';
+                const isByeB = teamB.team_name === '（シード）';
+
+                // 両方シードの場合はカード化スキップ
+                if (isByeA && isByeB) continue;
+
+                let status = 'scheduled';
+                let scoreA = 0;
+                let scoreB = 0;
+
+                // 片方がシードの場合は自動的に不戦勝(finished)処理
+                if (isByeA || isByeB) {
+                    status = 'finished';
+                    scoreA = isByeB ? 1 : 0;
+                    scoreB = isByeA ? 1 : 0;
+                }
+
                 matchesToInsert.push({
                     category,
                     stage: '決勝トーナメント',
-                    title: `1回戦(右) 第${Math.floor(i/2) + 1}試合`,
+                    title: `1回戦 第${matchNum}試合`,
                     teamA: teamA.team_name,
                     teamB: teamB.team_name,
-                    scoreA: 0, scoreB: 0,
-                    status: teamB.team_name === '（シード）' ? 'finished' : 'scheduled',
-                    details: { round: 1, side: 'right', match_index: Math.floor(i/2) }
+                    scoreA,
+                    scoreB,
+                    status,
+                    details: { 
+                        round: 1, 
+                        match_index: matchNum,
+                        total_slots: T 
+                    }
                 });
+                matchNum++;
             }
         }
 
+        // ==========================================
+        // 💾 データの安全な個別上書き保存処理 (課題B解決)
+        // ==========================================
         if (type === 'league') {
             await supabase.from('matches').delete().eq('category', category).eq('stage', '予選リーグ');
         } else {
@@ -381,25 +444,14 @@ app.post('/api/tournament/generate', async (req, res) => {
         const { error: iError } = await supabase.from('matches').insert(matchesToInsert);
         if (iError) return res.status(500).json({ error: iError.message });
 
-        res.json({ success: true, message: `${matchesToInsert.length}個の対戦カードを生成・反映しました。` });
+        res.json({ success: true, message: `${category} の組み合わせを正常に生成・上書きしました。` });
     } catch (err) {
+        console.error("生成処理内エラー:", err);
         res.status(500).json({ error: err.message });
     }
 });
 
-app.post('/api/tournament/save_league', async (req, res) => {
-    const { category, matches } = req.body;
-    try {
-        await supabase.from('matches').delete().eq('category', category).eq('stage', '予選リーグ');
-        const { error } = await supabase.from('matches').insert(matches);
-        if (error) throw error;
-        res.json({ success: true, count: matches.length });
-    } catch (err) {
-        console.error("保存エラー:", err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
+// 同門対決を極限まで避ける配列並び替え関数
 function optimizeTeamDistribution(teams) {
     const orgGroups = {};
     teams.forEach(team => {
@@ -420,20 +472,3 @@ function optimizeTeamDistribution(teams) {
     }
     return result;
 }
-
-app.post('/api/tournament/save_final', async (req, res) => {
-    const { category, matches } = req.body;
-    try {
-        await supabase.from('matches').delete().eq('category', category).eq('stage', '決勝トーナメント');
-        const { error } = await supabase.from('matches').insert(matches);
-        if (error) throw error;
-        res.json({ success: true, count: matches.length });
-    } catch (err) {
-        console.error("保存エラー:", err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Supabase接続完了！本番モードで起動中: http://localhost:${PORT}`);
-});
