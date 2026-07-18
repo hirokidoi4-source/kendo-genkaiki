@@ -224,13 +224,16 @@
                 const w3 = m3 ? getWinner(m3) || '準決勝進出' : '3試合目勝者';
 
                 const treeWrapper = document.createElement('div');
-                // 🌟 横スクロール対応かつパディング・フォントサイズの最適化
-                treeWrapper.className = "w-full overflow-auto pb-6 pt-2 bg-white rounded-xl shadow-md border border-gray-200 p-6 select-none";
+                // 🌟 縦の overflow を完全に無くし、横だけを広々スクロール可能に (`overflow-x-auto overflow-y-visible`)
+                // 🌟 さらに最大幅の制限 (`max-w-5xl`) を解除して画面いっぱいに表示できるようにします
+                treeWrapper.className = "w-full overflow-x-auto overflow-y-visible pb-12 pt-2 bg-white rounded-xl shadow-md border border-gray-200 p-6 select-none";
                 
-                // 🌟 w-56 から w-80 (約320px) へカード幅と余白を劇的拡大、フォントを太く大きく修正
+                // 外側のメインコンテナ自体の幅制限も解除するおまじない
+                document.getElementById('mainContent').className = "p-4 w-full max-w-full pb-20";
+
                 treeWrapper.innerHTML = `
                     <div class="text-center font-black text-sm text-indigo-900 mb-8 border-b-2 border-dashed pb-3 flex justify-center items-center gap-1.5">
-                        <span>📊 左右にスワイプ可能</span>
+                        <span>📊 左右にスワイプ可能 / 画面全体を下にスクロールして全試合を表示</span>
                         <span class="bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded-full">タップで詳細スコア表示</span>
                     </div>
                     
