@@ -49,7 +49,6 @@
 
             <div class="bg-gray-50 p-4 rounded-lg border border-dashed">
                 <p id="selectorTitle" class="text-[11px] text-gray-500 font-bold mb-3">▼ 予選結果に基づき、自動選出されています（手動微調整も可能）</p>
-                <!-- 🌟 枠をスクリプトで動的生成するために器を用意 -->
                 <div class="grid grid-cols-2 md:grid-cols-3 gap-4" id="slotSelectorContainer"></div>
             </div>
         </div>
@@ -80,13 +79,12 @@
         let allMatchesList = []; 
         const lists = document.querySelectorAll('.sortable-list');
 
-        // === 1. 部門チームデータの読込 ➔ 予選スコアの自動集計 ➔ プルダウン自動セット ===
         const loadCategoryTeams = async () => {
             const category = document.getElementById('categorySelect').value;
             const slotContainer = document.getElementById('slotSelectorContainer');
             const modeBadge = document.getElementById('modeBadge');
             const selectorTitle = document.getElementById('selectorTitle');
-            slotContainer.innerHTML = ''; // 一旦クリア
+            slotContainer.innerHTML = ''; 
 
             try {
                 if (allTeamsList.length === 0) {
@@ -99,31 +97,36 @@
                 const filteredTeams = allTeamsList.filter(t => t.category === category);
                 const leagueMatches = allMatchesList.filter(m => m.category === category && m.stage === '予選リーグ');
 
-                // 🔥 モード判定：予選リーグの試合が1件もない場合はストレートトーナメントモード
                 if (leagueMatches.length === 0) {
                     modeBadge.innerText = '予選なし：ストレートTモード 🎌';
                     modeBadge.className = 'text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded ml-2 font-bold';
                     selectorTitle.innerText = '▼ 登録チーム一覧からトーナメントに出場するチームを順に選択してください';
 
-                    // 登録チーム数に合わせてセレクトボックスを生成（最大8枠、またはチーム数分）
                     const slotCount = Math.max(4, filteredTeams.length);
                     for (let i = 0; i < slotCount; i++) {
                         createSlotSelect(slotContainer, `slot_${i}`, `エントリー枠 ${i + 1}`, filteredTeams, filteredTeams[i]?.team_name || '');
                     }
                 } else {
-                    // 予選リーグが存在する通常モード
                     modeBadge.innerText = '予選連動モード ⚡';
                     modeBadge.className = 'text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded ml-2 font-bold';
                     selectorTitle.innerText = '▼ 予選結果（勝者数）に基づき、自動選出されています（同点時の手動調整も可能）';
 
-                    // 1. 全自動で存在する全予選リーグを算出
                     const teamStats = {};
+                    // 各リーグの進出可能枠（max_promoted）をキャッシュする
+                    const leagueMaxPromotedMap = {};
+
                     filteredTeams.forEach(t => {
                         teamStats[t.team_name] = { wins: 0, team: t, league: '不明' };
                     });
 
                     leagueMatches.forEach(m => {
                         const leagueName = m.details && m.details.league ? m.details.league : 'Aリーグ';
+                        
+                        // 🌟②【改善】試合データ内の max_promoted (進出可能数) を取得・保存
+                        if (m.details && m.details.max_promoted !== undefined) {
+                            leagueMaxPromotedMap[leagueName] = m.details.max_promoted;
+                        }
+
                         if (!teamStats[m.teamA]) teamStats[m.teamA] = { wins: 0, team: { team_name: m.teamA, organization: '' }, league: leagueName };
                         if (!teamStats[m.teamB]) teamStats[m.teamB] = { wins: 0, team: { team_name: m.teamB, organization: '' }, league: leagueName };
                         
@@ -147,29 +150,28 @@
                         leagues[stat.league].push(stat);
                     });
 
-                    // 2. リーグ名（A, B, C...）順にソート
                     const sortedLeagueNames = Object.keys(leagues).sort();
                     let slotIdx = 0;
 
-                    // 各リーグごとにソートし、1位と2位の枠を動的に生成
                     sortedLeagueNames.forEach(lName => {
-                        // 勝ち点順にソート（同点でも必ず配列要素が分かれるため重複を防止）
                         leagues[lName].sort((a, b) => b.wins - a.wins);
 
                         const firstTeam = leagues[lName][0]?.team.team_name || '';
                         const secondTeam = leagues[lName][1]?.team.team_name || '';
 
-                        // 1位のセレクトボックス生成
+                        // どのリーグであっても1位の枠は必ず生成
                         createSlotSelect(slotContainer, `slot_${slotIdx}`, `${lName} 1位`, filteredTeams, firstTeam);
                         slotIdx++;
 
-                        // 2位のセレクトボックス生成
-                        createSlotSelect(slotContainer, `slot_${slotIdx}`, `${lName} 2位`, filteredTeams, secondTeam);
-                        slotIdx++;
+                        // 🌟②【改善】進出可能枠(max_promoted)が2以上の時（＝4チームリーグなど）のみ、2位の枠を生成する
+                        const maxPromoted = leagueMaxPromotedMap[lName] !== undefined ? leagueMaxPromotedMap[lName] : 2; 
+                        if (maxPromoted >= 2) {
+                            createSlotSelect(slotContainer, `slot_${slotIdx}`, `${lName} 2位`, filteredTeams, secondTeam);
+                            slotIdx++;
+                        }
                     });
                 }
 
-                // 山の表示をクリア
                 document.getElementById('leftBracket').innerHTML = '';
                 document.getElementById('rightBracket').innerHTML = '';
 
@@ -178,7 +180,6 @@
             }
         };
 
-        // セレクトボックスを動的生成するヘルパー関数
         const createSlotSelect = (container, id, labelText, teams, defaultValue) => {
             const wrapper = document.createElement('div');
             wrapper.className = 'bg-white p-2 rounded border shadow-sm';
@@ -189,17 +190,14 @@
             select.className = 'team-slot-select w-full border p-1 rounded text-xs bg-white focus:ring-indigo-500 font-medium';
             select.innerHTML = '<option value="">-- 未選出（空枠） --</option>';
 
-            // 🌟 【改善】プルダウンの変更を、下の山へピンポイントで連動させる処理
             select.addEventListener('change', () => {
                 const selectedOpt = select.options[select.selectedIndex];
                 const newTeamName = select.value;
                 const newOrg = selectedOpt ? selectedOpt.getAttribute('data-org') : '';
 
-                // 下の山（左右のブロック）の中から、このスロット番号(id)に対応する要素を探して書き換える
                 const targetLi = document.querySelector(`li[data-slot-source="${id}"]`);
                 if (targetLi) {
                     if (newTeamName) {
-                        // チーム名を更新
                         targetLi.setAttribute('data-team', newTeamName);
                         targetLi.setAttribute('data-org', newOrg);
                         targetLi.innerHTML = `
@@ -210,14 +208,10 @@
                             <span class="text-xs text-gray-400">母体: ${newOrg}</span>
                         `;
                     } else {
-                        // 空枠が選ばれた場合は要素を削除
                         targetLi.remove();
                     }
-                    // 枠番号の再計算と、同門チェックを実行
                     refreshBracketIndexAndCheck();
                 } else {
-                    // もし下の山にまだ配置されていない場合は、手動選択後に一度「自動抽選」を押してもらうか、
-                    // あるいは自動的に左の山へ追加する安全策として、再抽選を走らせる
                     autoDrawFinals();
                 }
             });
@@ -235,7 +229,7 @@
             container.appendChild(wrapper);
         };
 
-        // === 2. 同門を左右の山に隔離する自動抽選 ===
+        // === 🌟①＆②の改善：同門隔離を保持しつつ、左の山と右の山へ【交互かつ均等】に配置する処理 ===
         window.autoDrawFinals = () => {
             const selectedTeams = [];
             const selects = document.querySelectorAll('.team-slot-select');
@@ -244,7 +238,7 @@
                 if (select.value) {
                     const selectedOpt = select.options[select.selectedIndex];
                     selectedTeams.push({
-                        slot_id: select.id, // 🌟 どのスロットから選ばれたかを追跡
+                        slot_id: select.id, 
                         team_name: select.value,
                         organization: selectedOpt.getAttribute('data-org')
                     });
@@ -256,6 +250,7 @@
                 return;
             }
 
+            // 母体ごとにグループ分けする
             const orgGroups = {};
             selectedTeams.forEach(t => {
                 if (!orgGroups[t.organization]) orgGroups[t.organization] = [];
@@ -265,19 +260,35 @@
             const leftBracketTeams = [];
             const rightBracketTeams = [];
 
+            // 🌟①【改善】同門を左右に分けつつ、全体が左の山に偏らないよう、追加先を交互にするフラグを導入
+            let flipToggle = true;
+
             Object.keys(orgGroups).forEach(org => {
                 const group = orgGroups[org];
                 group.forEach((team, index) => {
                     if (index % 2 === 0) {
-                        leftBracketTeams.push(team);
+                        if (flipToggle) leftBracketTeams.push(team);
+                        else rightBracketTeams.push(team);
                     } else {
-                        rightBracketTeams.push(team);
+                        if (flipToggle) rightBracketTeams.push(team);
+                        else leftBracketTeams.push(team);
                     }
                 });
+                // 別の母体に映るタイミングでトグルを反転させ、特定の山への偏りを相殺する
+                flipToggle = !flipToggle;
             });
 
-            renderBracket('leftBracket', leftBracketTeams);
-            renderBracket('rightBracket', rightBracketTeams);
+            // 万が一、左右の枚数差が2枚以上開いた場合の最終均等化調整
+            const allAssigned = [...leftBracketTeams, ...rightBracketTeams];
+            const finalLeft = [];
+            const finalRight = [];
+            allAssigned.forEach((team, idx) => {
+                if (idx % 2 === 0) finalLeft.push(team);
+                else finalRight.push(team);
+            });
+
+            renderBracket('leftBracket', finalLeft);
+            renderBracket('rightBracket', finalRight);
 
             refreshBracketIndexAndCheck();
         };
@@ -290,7 +301,7 @@
                 li.className = "bg-white border border-gray-300 p-3 rounded cursor-move hover:border-indigo-500 hover:shadow-md transition flex items-center justify-between";
                 li.setAttribute('data-org', team.organization);
                 li.setAttribute('data-team', team.team_name);
-                li.setAttribute('data-slot-source', team.slot_id || ''); // 🌟 元のスロットIDを保持
+                li.setAttribute('data-slot-source', team.slot_id || ''); 
                 li.innerHTML = `
                     <div>
                         <span class="badge text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-1 rounded mr-2">枠 -</span>
@@ -348,7 +359,6 @@
             });
         });
 
-        // === 5. 確定保存のイベント処理 ===
         document.getElementById('saveBtn').addEventListener('click', async () => {
             const category = document.getElementById('categorySelect').value;
             
