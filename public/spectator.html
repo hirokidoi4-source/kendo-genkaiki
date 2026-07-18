@@ -113,7 +113,7 @@
 
                 const resMatches = await fetch('/api/matches');
                 allMatches = await resMatches.json();
-                
+                 
                 renderLeagueOverview();
                 renderContent();       
                 highlightMyTeam();     
@@ -173,14 +173,14 @@
                 const col = document.createElement('div');
                 col.className = "bg-white p-2 rounded shadow-sm border";
                 col.innerHTML = `<span class="font-bold text-indigo-700">${leagueName}</span>`;
-                
+                 
                 const ul = document.createElement('ul');
                 ul.className = "mt-1 space-y-0.5 text-gray-600 list-disc list-inside";
-                
+                 
                 teamSet.forEach(team => { 
                     ul.innerHTML += `<li class="league-team-item truncate" data-team="${team}">${team}</li>`; 
                 });
-                
+                 
                 col.appendChild(ul);
                 listDiv.appendChild(col);
             });
@@ -208,139 +208,30 @@
                     return;
                 }
 
-                finalMatches.sort((a, b) => a.title.localeCompare(b.title));
-                
-                const getWinner = (m) => {
-                    if (!m || m.status !== 'finished') return null;
-                    return m.scoreA > m.scoreB ? m.teamA : m.teamB;
-                };
+                // 🌟 試合番号順（第1試合、第2試合...）に綺麗に並び替えます
+                finalMatches.sort((a, b) => {
+                    const numA = parseInt(a.title.match(/\d+/)?.[0] || 0);
+                    const numB = parseInt(b.title.match(/\d+/)?.[0] || 0);
+                    return numA - numB;
+                });
 
-                const m1 = finalMatches.find(m => m.title.includes('第1試合'));
-                const m2 = finalMatches.find(m => m.title.includes('第2試合'));
-                const m3 = finalMatches.find(m => m.title.includes('第3試合'));
+                // 外側のメインコンテナ自体の幅制限を適切に設定
+                document.getElementById('mainContent').className = "p-4 w-full max-w-3xl mx-auto pb-20";
 
-                const w1 = m1 ? getWinner(m1) || '準決勝進出' : '1試合目勝者';
-                const w2 = m2 ? getWinner(m2) || '準決勝進出' : '2試合目勝者';
-                const w3 = m3 ? getWinner(m3) || '準決勝進出' : '3試合目勝者';
-
-                const treeWrapper = document.createElement('div');
-                // 🌟 縦の overflow を完全に無くし、横だけを広々スクロール可能に (`overflow-x-auto overflow-y-visible`)
-                // 🌟 さらに最大幅の制限 (`max-w-5xl`) を解除して画面いっぱいに表示できるようにします
-                treeWrapper.className = "w-full overflow-x-auto overflow-y-visible pb-12 pt-2 bg-white rounded-xl shadow-md border border-gray-200 p-6 select-none";
-                
-                // 外側のメインコンテナ自体の幅制限も解除するおまじない
-                document.getElementById('mainContent').className = "p-4 w-full max-w-full pb-20";
-
-                treeWrapper.innerHTML = `
-                    <div class="text-center font-black text-sm text-indigo-900 mb-8 border-b-2 border-dashed pb-3 flex justify-center items-center gap-1.5">
-                        <span>📊 左右にスワイプ可能 / 画面全体を下にスクロールして全試合を表示</span>
-                        <span class="bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded-full">タップで詳細スコア表示</span>
-                    </div>
-                    
-                    <div class="flex items-center min-w-[1050px] justify-between px-6 relative py-4">
-                        <!-- 1回戦カラム -->
-                        <div class="w-80 space-y-20 flex flex-col justify-center">
-                            <!-- 第1試合 -->
-                            <div class="border-2 border-gray-300 rounded-xl p-3.5 bg-slate-50 relative cursor-pointer hover:border-indigo-500 hover:shadow-lg transition-all" data-team-a="${m1?.teamA || ''}" data-team-b="${m1?.teamB || ''}" onclick="openModalById('${m1?.id}')">
-                                <div class="text-xs text-slate-500 font-black mb-1.5 bg-slate-200/60 px-2 py-0.5 rounded inline-block">1回戦 第1試合</div>
-                                <div class="text-base space-y-2">
-                                    <div class="flex justify-between items-center ${m1 && getWinner(m1)===m1.teamA ? 'text-indigo-800 font-black' : 'font-bold text-gray-700'}">
-                                        <span class="truncate pr-2">${m1?.teamA || '-'}</span>
-                                        <span class="text-xl px-2 bg-white border rounded shadow-sm min-w-[28px] text-center">${m1?.status==='finished'?m1.scoreA:''}</span>
-                                    </div>
-                                    <div class="border-t border-gray-200 my-1"></div>
-                                    <div class="flex justify-between items-center ${m1 && getWinner(m1)===m1.teamB ? 'text-indigo-800 font-black' : 'font-bold text-gray-700'}">
-                                        <span class="truncate pr-2">${m1?.teamB || '-'}</span>
-                                        <span class="text-xl px-2 bg-white border rounded shadow-sm min-w-[28px] text-center">${m1?.status==='finished'?m1.scoreB:''}</span>
-                                    </div>
-                                </div>
-                                <div class="absolute right-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
-                            </div>
-
-                            <!-- 第2試合 -->
-                            <div class="border-2 border-gray-300 rounded-xl p-3.5 bg-slate-50 relative cursor-pointer hover:border-indigo-500 hover:shadow-lg transition-all" data-team-a="${m2?.teamA || ''}" data-team-b="${m2?.teamB || ''}" onclick="openModalById('${m2?.id}')">
-                                <div class="text-xs text-slate-500 font-black mb-1.5 bg-slate-200/60 px-2 py-0.5 rounded inline-block">1回戦 第2試合</div>
-                                <div class="text-base space-y-2">
-                                    <div class="flex justify-between items-center ${m2 && getWinner(m2)===m2.teamA ? 'text-indigo-800 font-black' : 'font-bold text-gray-700'}">
-                                        <span class="truncate pr-2">${m2?.teamA || '-'}</span>
-                                        <span class="text-xl px-2 bg-white border rounded shadow-sm min-w-[28px] text-center">${m2?.status==='finished'?m2.scoreA:''}</span>
-                                    </div>
-                                    <div class="border-t border-gray-200 my-1"></div>
-                                    <div class="flex justify-between items-center ${m2 && getWinner(m2)===m2.teamB ? 'text-indigo-800 font-black' : 'font-bold text-gray-700'}">
-                                        <span class="truncate pr-2">${m2?.teamB || '-'}</span>
-                                        <span class="text-xl px-2 bg-white border rounded shadow-sm min-w-[28px] text-center">${m2?.status==='finished'?m2.scoreB:''}</span>
-                                    </div>
-                                </div>
-                                <div class="absolute right-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
-                            </div>
-
-                            <!-- 第3試合 -->
-                            <div class="border-2 border-gray-300 rounded-xl p-3.5 bg-slate-50 relative cursor-pointer hover:border-indigo-500 hover:shadow-lg transition-all" data-team-a="${m3?.teamA || ''}" data-team-b="${m3?.teamB || ''}" onclick="openModalById('${m3?.id}')">
-                                <div class="text-xs text-slate-500 font-black mb-1.5 bg-slate-200/60 px-2 py-0.5 rounded inline-block">1回戦 第3試合</div>
-                                <div class="text-base space-y-2">
-                                    <div class="flex justify-between items-center ${m3 && getWinner(m3)===m3.teamA ? 'text-indigo-800 font-black' : 'font-bold text-gray-700'}">
-                                        <span class="truncate pr-2">${m3?.teamA || '-'}</span>
-                                        <span class="text-xl px-2 bg-white border rounded shadow-sm min-w-[28px] text-center">${m3?.status==='finished'?m3.scoreA:''}</span>
-                                    </div>
-                                    <div class="border-t border-gray-200 my-1"></div>
-                                    <div class="flex justify-between items-center ${m3 && getWinner(m3)===m3.teamB ? 'text-indigo-800 font-black' : 'font-bold text-gray-700'}">
-                                        <span class="truncate pr-2">${m3?.teamB || '-'}</span>
-                                        <span class="text-xl px-2 bg-white border rounded shadow-sm min-w-[28px] text-center">${m3?.status==='finished'?m3.scoreB:''}</span>
-                                    </div>
-                                </div>
-                                <div class="absolute right-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
-                            </div>
-                        </div>
-
-                        <!-- 準決勝カラム -->
-                        <div class="w-80 space-y-44 flex flex-col justify-center pl-6 relative">
-                            <!-- 試合間の縦縦接続線 (左側ツリー分岐用) -->
-                            <div class="absolute left-0 top-[115px] w-1 h-[170px] bg-slate-400"></div>
-                            
-                            <!-- 準決勝 第1試合 -->
-                            <div class="border-2 border-indigo-200 rounded-xl p-4 bg-indigo-50/50 relative shadow-sm">
-                                <div class="text-xs text-indigo-800 font-black mb-1.5 bg-indigo-100 px-2 py-0.5 rounded inline-block">準決勝 第1試合</div>
-                                <div class="text-base space-y-2 font-black">
-                                    <div class="truncate text-slate-800 bg-white/80 p-1 px-2 border rounded border-gray-200 shadow-inner">${w1}</div>
-                                    <div class="truncate text-slate-800 bg-white/80 p-1 px-2 border rounded border-gray-200 shadow-inner">${w2}</div>
-                                </div>
-                                <div class="absolute right-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
-                                <div class="absolute left-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
-                            </div>
-
-                            <!-- 準決勝 第2試合 -->
-                            <div class="border-2 border-indigo-200 rounded-xl p-4 bg-indigo-50/50 relative shadow-sm">
-                                <div class="text-xs text-indigo-800 font-black mb-1.5 bg-indigo-100 px-2 py-0.5 rounded inline-block">準決勝 第2試合</div>
-                                <div class="text-base space-y-2 font-black">
-                                    <div class="truncate text-slate-800 bg-white/80 p-1 px-2 border rounded border-gray-200 shadow-inner">${w3}</div>
-                                    <div class="truncate text-gray-400 bg-gray-100/80 p-1 px-2 border rounded border-dashed border-gray-300">（不戦勝・シード山）</div>
-                                </div>
-                                <div class="absolute right-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
-                                <div class="absolute left-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
-                            </div>
-                            
-                            <!-- シード接続用の縦線 -->
-                            <div class="absolute left-0 top-[385px] w-1 h-[170px] bg-slate-400"></div>
-                        </div>
-
-                        <!-- 決勝戦カラム -->
-                        <div class="w-80 flex flex-col justify-center pl-6 relative">
-                            <!-- 決勝へ伸びる中央の縦接続線 -->
-                            <div class="absolute left-0 top-[195px] w-1 h-[270px] bg-red-400"></div>
-
-                            <!-- 決勝カード -->
-                            <div class="border-4 border-red-500 rounded-2xl p-5 bg-gradient-to-br from-red-50 via-white to-red-50/30 relative shadow-xl transform hover:scale-[1.01] transition-all">
-                                <div class="text-xs font-black text-red-600 mb-2 flex items-center gap-1 bg-red-100/80 px-2.5 py-0.5 rounded-full w-max">🏆 決勝戦</div>
-                                <div class="text-base space-y-2.5 font-black text-slate-800">
-                                    <div class="truncate bg-white p-1.5 px-3 border border-red-200 rounded-xl shadow-sm">準決勝1の勝者</div>
-                                    <div class="truncate bg-white p-1.5 px-3 border border-red-200 rounded-xl shadow-sm">準決勝2の勝者</div>
-                                </div>
-                                <div class="absolute left-[-24px] top-1/2 w-6 h-1 bg-red-400"></div>
-                            </div>
-                        </div>
-                    </div>
+                // 🌟 上部に「決勝トーナメント一覧」の案内を追加
+                const headerDiv = document.createElement('div');
+                headerDiv.className = "text-center font-black text-sm text-indigo-900 mb-6 border-b-2 border-dashed pb-3 flex justify-center items-center gap-1.5";
+                headerDiv.innerHTML = `
+                    <span>📊 決勝トーナメント 試合結果一覧</span>
+                    <span class="bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded-full">タップで詳細スコア表示</span>
                 `;
-                content.appendChild(treeWrapper);
+                content.appendChild(headerDiv);
+
+                // 🌟 全ての決勝トーナメント試合をループで自動生成（何試合あっても下へ綺麗に追加されます）
+                finalMatches.forEach(match => {
+                    const card = createMatchCard(match);
+                    content.appendChild(card);
+                });
             }
         };
 
@@ -393,7 +284,7 @@
             document.getElementById('modalTitle').innerText = match.title;
             document.getElementById('modalTeamA').innerText = match.teamA;
             document.getElementById('modalTeamB').innerText = match.teamB;
-            
+             
             const hasStarted = match.status === 'finished' || match.status === 'ongoing';
             document.getElementById('modalScoreA').innerText = hasStarted ? match.scoreA : '0';
             document.getElementById('modalScoreB').innerText = hasStarted ? match.scoreB : '0';
@@ -409,7 +300,7 @@
                 match.details.forEach(detail => {
                     const row = document.createElement('div');
                     row.className = 'flex justify-between items-center py-2 border-b last:border-b-0 text-base';
-                    
+                     
                     const formatPoint = (pt) => {
                         if(!pt) return '-';
                         if(pt === '引') return `<span class="text-teal-600 font-bold">引</span>`;
