@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ビジュアル対戦管理ダッシュボード</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* トーナメントの線を表現するためのスタイル */
+        .tournament-branch {
+            position: relative;
+        }
+        .match-card {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .match-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- ヘッダー -->
+        <header class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center border-b pb-4 gap-4">
+            <div>
+                <a href="/admin.html" class="text-sm font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 mb-1">← 管理画面メニューに戻る</a>
+                <h1 class="text-2xl md:text-3xl font-black text-slate-900 flex items-center gap-2">⚔️ 当日試合進行・直感入力ボード</h1>
+            </div>
+            
+            <!-- 部門選択セレクトボックス -->
+            <div class="flex items-center gap-2 bg-white p-2 rounded-lg shadow-sm border w-full md:w-auto">
+                <span class="text-sm font-bold text-slate-500 pl-2">表示部門:</span>
+                <select id="currentCategory" onchange="loadCategoryData()" class="bg-transparent font-bold text-slate-800 focus:outline-none cursor-pointer pr-4">
+                    <option value="low_elem">小学生低学年</option>
+                    <option value="elem">小学生団体</option>
+                    <option value="mid">中学生団体</option>
+                    <option value="mid_girls">中学女子団体</option>
+                </select>
+            </div>
+        </header>
+
+        <!-- ステータス凡例 -->
+        <div class="flex gap-4 mb-6 text-xs font-bold">
+            <span class="flex items-center gap-1"><span class="w-3 h-3 bg-white border rounded"></span> 試合前</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 bg-amber-50 border border-amber-300 rounded"></span> 進行中</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 bg-slate-200 border rounded"></span> 試合終了</span>
+        </div>
+
+        <!-- メイン描画エリア -->
+        <main class="space-y-12">
+            <!-- 予選リーグセクション -->
+            <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-lg font-black text-slate-900 border-b pb-2 mb-6 flex items-center gap-2">
+                    <span class="text-blue-600">▤</span> 予選リーグ（クリックして結果入力）
+                </h2>
+                <div id="leagueContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- JavaScriptでグループごとにリーグ表が生成されます -->
+                </div>
+            </section>
+
+            <!-- 決勝トーナメントセクション -->
+            <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+                <h2 class="text-lg font-black text-slate-900 border-b pb-2 mb-6 flex items-center gap-2">
+                    <span class="text-rose-600">🏆</span> 決勝トーナメント（クリックして結果入力）
+                </h2>
+                <div id="tournamentContainer" class="flex gap-12 min-w-max p-4 justify-start items-center">
+                    <!-- JavaScriptで1回戦、準決勝、決勝の列が生成されます -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 🛑 結果入力ポップアップモーダル -->
+    <!-- ================================================================= -->
+    <div id="scoreModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-xl border max-w-md w-full overflow-hidden transform transition-all scale-95 opacity-0 duration-200" id="modalCard">
+            <!-- モーダルヘッダー -->
+            <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+                <div>
+                    <span id="modalStage" class="text-xs font-bold bg-indigo-600 px-2 py-0.5 rounded">予選リーグ</span>
+                    <h3 id="modalTitle" class="font-bold mt-1 text-sm text-slate-300">Aリーグ 第1試合</h3>
+                </div>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-white font-bold text-xl">&times;</button>
+            </div>
+            
+            <!-- モーダルボディ -->
+            <form id="scoreForm" onsubmit="submitScore(event)" class="p-6 space-y-4">
+                <input type="hidden" id="matchId">
+                
+                <!-- 対戦カード & スコア入力 -->
+                <div class="grid grid-cols-7 items-center gap-2 text-center bg-slate-50 p-4 rounded-lg border">
+                    <!-- チームA -->
+                    <div class="col-span-3">
+                        <div id="modalTeamA" class="font-black text-base text-slate-900 truncate">チームA</div>
+                        <span class="text-xs text-slate-400">赤 (▲)</span>
+                    </div>
+                    <!-- スコア A -->
+                    <div class="col-span-1">
+                        <input type="number" id="scoreA" min="0" class="w-full text-center font-black text-xl bg-white border-2 rounded p-1 focus:border-indigo-500" required>
+                    </div>
+                    <!-- VS -->
+                    <div class="col-span-1 font-bold text-slate-400 text-xs">VS</div>
+                    <!-- スコア B -->
+                    <div class="col-span-1">
+                        <input type="number" id="scoreB" min="0" class="w-full text-center font-black text-xl bg-white border-2 rounded p-1 focus:border-indigo-500" required>
+                    </div>
+                    <!-- チームB -->
+                    <div class="col-span-3">
+                        <div id="modalTeamB" class="font-black text-base text-slate-900 truncate">チームB</div>
+                        <span class="text-xs text-slate-400">白 (○)</span>
+                    </div>
+                </div>
+
+                <!-- 試合ステータス -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">試合ステータス</label>
+                    <select id="matchStatus" class="w-full bg-white border rounded p-2 text-sm font-bold text-slate-700">
+                        <option value="scheduled">⏱️ 試合前 (Scheduled)</option>
+                        <option value="ongoing">🔥 進行中 (Ongoing)</option>
+                        <option value="finished">✅ 試合終了 (Finished)</option>
+                    </select>
+                </div>
+
+                <!-- ボタンエリア -->
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="closeModal()" class="w-1/3 border text-slate-600 font-bold py-2 rounded-lg text-sm hover:bg-slate-50 transition">
+                        キャンセル
+                    </button>
+                    <button type="submit" class="w-2/3 bg-indigo-600 text-white font-bold py-2 rounded-lg text-sm hover:bg-indigo-700 transition shadow-sm flex justify-center items-center gap-1">
+                        💾 結果を保存して反映
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 🧠 フロントエンドロジック (API連携) -->
+    <!-- ================================================================= -->
+    <script>
+        let allMatches = []; // サーバーから取得した全試合データ
+
+        // ページ読み込み時に初期データを取得
+        document.addEventListener('DOMContentLoaded', () => {
+            loadCategoryData();
+        });
+
+        // 選択された部門のデータをSupabaseから取得
+        async function loadCategoryData() {
+            const category = document.getElementById('currentCategory').value;
+            try {
+                const res = await fetch('/api/matches');
+                const data = await res.json();
+                
+                // 選択中のクラス(部門)のデータのみに絞り込む
+                allMatches = data.filter(m => m.category === category);
+                
+                // 画面の再描画
+                renderLeague();
+                renderTournament();
+            } catch (err) {
+                console.error("データ取得エラー:", err);
+                alert("データの取得に失敗しました。");
+            }
+        }
+
+        // ---------------------------------------------------------
+        // ▥ 予選リーグの描画ロジック
+        // ---------------------------------------------------------
+        function renderLeague() {
+            const container = document.getElementById('leagueContainer');
+            container.innerHTML = '';
+            
+            const leagueMatches = allMatches.filter(m => m.stage === '予選リーグ');
+            if (leagueMatches.length === 0) {
+                container.innerHTML = '<p class="text-sm text-slate-400 font-bold">予選リーグの組み合わせが生成されていません。</p>';
+                return;
+            }
+
+            // リーグ（Aリーグ、Bリーグ...）ごとにグループ化
+            const groups = {};
+            leagueMatches.forEach(m => {
+                const leagueName = m.details?.league || '予選リーグ';
+                if (!groups[leagueName]) groups[leagueName] = [];
+                groups[leagueName].push(m);
+            });
+
+            // グループごとに小さな対戦表カードを生成
+            Object.keys(groups).sort().forEach(groupName => {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'border rounded-xl p-4 bg-slate-50 border-slate-200';
+                
+                let html = `<h3 class="font-black text-slate-800 border-b pb-1 mb-3 flex justify-between text-sm">
+                                <span>📍 ${groupName}</span>
+                            </h3>
+                            <div class="space-y-2">`;
+                
+                groups[groupName].forEach(m => {
+                    const isFinished = m.status === 'finished';
+                    const isOngoing = m.status === 'ongoing';
+                    const statusBg = isFinished ? 'bg-slate-200' : (isOngoing ? 'bg-amber-50 border-amber-300' : 'bg-white');
+                    
+                    html += `
+                        <div onclick="openScoreModal(${JSON.stringify(m).replace(/"/g, '&quot;')})" class="match-card ${statusBg} p-2 border rounded-lg flex justify-between items-center text-xs shadow-sm">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex justify-between items-center mb-1 text-[10px] font-bold text-slate-400">
+                                    <span>${m.title}</span>
+                                    ${isOngoing ? '<span class="text-amber-600 animate-pulse">● 進行中</span>' : ''}
+                                </div>
+                                <div class="flex justify-between font-bold">
+                                    <span class="${isFinished && m.scoreA > m.scoreB ? 'text-indigo-700 font-black' : ''} truncate max-w-[80px]">${m.teamA}</span>
+                                    <span class="text-slate-900">${m.scoreA} - ${m.scoreB}</span>
+                                    <span class="${isFinished && m.scoreB > m.scoreA ? 'text-indigo-700 font-black' : ''} truncate max-w-[80px]">${m.teamB}</span>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+                
+                html += `</div>`;
+                groupDiv.innerHTML = html;
+                container.appendChild(groupDiv);
+            });
+        }
+
+        // ---------------------------------------------------------
+        // 🏆 決勝トーナメントの描画ロジック
+        // ---------------------------------------------------------
+        function renderTournament() {
+            const container = document.getElementById('tournamentContainer');
+            container.innerHTML = '';
+            
+            const tournamentMatches = allMatches.filter(m => m.stage === '決勝トーナメント');
+            if (tournamentMatches.length === 0) {
+                container.innerHTML = '<p class="text-sm text-slate-400 font-bold">決勝トーナメントの組み合わせが生成されていません。</p>';
+                return;
+            }
+
+            // ラウンド（1回戦、準決勝、決勝）ごとに仕分ける
+            const rounds = { '1回戦': [], '準決勝': [], '決勝': [] };
+            tournamentMatches.forEach(m => {
+                if (m.title.includes('1回戦')) rounds['1回戦'].push(m);
+                else if (m.title.includes('準決勝')) rounds['準決勝'].push(m);
+                else if (m.title.includes('決勝')) rounds['決勝'].push(m);
+            });
+
+            // 各ラウンドのブロック列を作って横並びにする
+            Object.keys(rounds).forEach(roundName => {
+                if (rounds[roundName].length === 0) return;
+                
+                const roundColumn = document.createElement('div');
+                roundColumn.className = 'flex flex-col gap-8 justify-around h-full py-4';
+                
+                let html = `<div class="text-center font-black text-xs text-slate-400 tracking-wider mb-2 border-b pb-1">${roundName}</div>`;
+                
+                // 試合数の順にソート
+                rounds[roundName].sort((a,b) => a.id - b.id).forEach(m => {
+                    const isFinished = m.status === 'finished';
+                    const isOngoing = m.status === 'ongoing';
+                    const cardBg = isFinished ? 'bg-slate-200' : (isOngoing ? 'bg-amber-50 border-amber-300' : 'bg-white');
+                    
+                    html += `
+                        <div onclick="openScoreModal(${JSON.stringify(m).replace(/"/g, '&quot;')})" class="match-card ${cardBg} border-2 rounded-xl p-3 w-56 shadow-sm relative">
+                            <div class="text-[10px] font-black text-slate-400 mb-1 flex justify-between">
+                                <span>${m.title}</span>
+                                ${isOngoing ? '<span class="text-amber-500 animate-pulse">進行中</span>' : ''}
+                            </div>
+                            <div class="space-y-1 text-xs">
+                                <div class="flex justify-between items-center ${isFinished && m.scoreA > m.scoreB ? 'font-black text-indigo-900' : 'text-slate-600'}">
+                                    <span class="truncate max-w-[120px]">${m.teamA}</span>
+                                    <span class="font-mono bg-slate-100 px-1.5 py-0.5 rounded">${m.scoreA}</span>
+                                </div>
+                                <div class="flex justify-between items-center ${isFinished && m.scoreB > m.scoreA ? 'font-black text-indigo-900' : 'text-slate-600'}">
+                                    <span class="truncate max-w-[120px]">${m.teamB}</span>
+                                    <span class="font-mono bg-slate-100 px-1.5 py-0.5 rounded">${m.scoreB}</span>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+                
+                roundColumn.innerHTML = html;
+                container.appendChild(roundColumn);
+            });
+        }
+
+        // ---------------------------------------------------------
+        // 📑 モーダル（入力用ポップアップ）の開閉
+        // ---------------------------------------------------------
+        function openScoreModal(match) {
+            document.getElementById('matchId').value = match.id || '';
+            document.getElementById('modalStage').innerText = match.stage;
+            document.getElementById('modalTitle').innerText = match.title;
+            document.getElementById('modalTeamA').innerText = match.teamA;
+            document.getElementById('modalTeamB').innerText = match.teamB;
+            document.getElementById('scoreA').value = match.scoreA || 0;
+            document.getElementById('scoreB').value = match.scoreB || 0;
+            document.getElementById('matchStatus').value = match.status || 'scheduled';
+
+            // モーダル表示のCSSアニメーション
+            const modal = document.getElementById('scoreModal');
+            const card = document.getElementById('modalCard');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                card.classList.remove('scale-95', 'opacity-0');
+                card.classList.add('scale-100', 'opacity-100');
+            }, 50);
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('scoreModal');
+            const card = document.getElementById('modalCard');
+            card.classList.remove('scale-100', 'opacity-100');
+            card.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 150);
+        }
+
+        // ---------------------------------------------------------
+        // 💾 スコアの登録処理 (既存の /api/match_update へPOST)
+        // ---------------------------------------------------------
+        async function submitScore(e) {
+            e.preventDefault();
+            
+            const id = document.getElementById('matchId').value;
+            const scoreA = document.getElementById('scoreA').value;
+            const scoreB = document.getElementById('scoreB').value;
+            const status = document.getElementById('matchStatus').value;
+            
+            // 元の試合オブジェクトを全リストから特定
+            const originalMatch = allMatches.find(m => m.id == id);
+            if (!originalMatch) return alert('試合データの特定に失敗しました。');
+
+            // 送信データ組み立て（rowDataの型に合わせる）
+            const payload = {
+                id: parseInt(id, 10),
+                category: originalMatch.category,
+                stage: originalMatch.stage,
+                title: originalMatch.title,
+                teamA: originalMatch.teamA,
+                teamB: originalMatch.teamB,
+                scoreA: parseInt(scoreA, 10),
+                scoreB: parseInt(scoreB, 10),
+                status: status,
+                details: originalMatch.details || []
+            };
+
+            try {
+                const res = await fetch('/api/match_update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                
+                if (result.success) {
+                    closeModal();
+                    // 完了後に即座にデータを再ロードしてビジュアルを更新！
+                    await loadCategoryData();
+                } else {
+                    alert('❌ スコアの保存に失敗しました: ' + result.error);
+                }
+            } catch (err) {
+                alert('❌ サーバーとの通信エラーが発生しました。');
+            }
+        }
+    </script>
+</body>
+</html>
