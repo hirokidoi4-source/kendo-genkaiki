@@ -26,7 +26,9 @@
         </div>
 
         <div class="bg-white p-5 rounded-xl shadow-sm mb-6 border border-gray-200">
-            <h2 class="text-sm font-bold text-indigo-900 mb-3 flex items-center gap-1">⚡ 予選通過チームの選択（予選終了時に自動セットされます）</h2>
+            <h2 class="text-sm font-bold text-indigo-900 mb-3 flex items-center gap-1">
+                ⚡ 予選通過チームの選択 <span id="modeBadge" class="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded ml-2">モード判定中...</span>
+            </h2>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
@@ -46,33 +48,9 @@
             </div>
 
             <div class="bg-gray-50 p-4 rounded-lg border border-dashed">
-                <p class="text-[11px] text-gray-500 font-bold mb-3">▼ 予選結果（勝者数）に基づき、自動選出されています（手動微調整も可能）</p>
-                <div class="grid grid-cols-2 md:grid-cols-3 gap-4" id="slotSelectorContainer">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-600 mb-1">Aリーグ 1位</label>
-                        <select id="slot_0" class="team-slot-select w-full border p-2 rounded text-xs bg-white focus:ring-indigo-500 font-medium"></select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-600 mb-1">Bリーグ 1位</label>
-                        <select id="slot_1" class="team-slot-select w-full border p-2 rounded text-xs bg-white focus:ring-indigo-500 font-medium"></select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-600 mb-1">Cリーグ 1位</label>
-                        <select id="slot_2" class="team-slot-select w-full border p-2 rounded text-xs bg-white focus:ring-indigo-500 font-medium"></select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-600 mb-1">Aリーグ 2位</label>
-                        <select id="slot_3" class="team-slot-select w-full border p-2 rounded text-xs bg-white focus:ring-indigo-500 font-medium"></select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-600 mb-1">Bリーグ 2位</label>
-                        <select id="slot_4" class="team-slot-select w-full border p-2 rounded text-xs bg-white focus:ring-indigo-500 font-medium"></select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-600 mb-1">Cリーグ 2位</label>
-                        <select id="slot_5" class="team-slot-select w-full border p-2 rounded text-xs bg-white focus:ring-indigo-500 font-medium"></select>
-                    </div>
-                </div>
+                <p id="selectorTitle" class="text-[11px] text-gray-500 font-bold mb-3">▼ 予選結果に基づき、自動選出されています（手動微調整も可能）</p>
+                <!-- 🌟 枠をスクリプトで動的生成するために器を用意 -->
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4" id="slotSelectorContainer"></div>
             </div>
         </div>
 
@@ -99,14 +77,18 @@
 
     <script>
         let allTeamsList = []; 
-        let allMatchesList = []; // 【追加】予選結果計算用
+        let allMatchesList = []; 
         const lists = document.querySelectorAll('.sortable-list');
 
         // === 1. 部門チームデータの読込 ➔ 予選スコアの自動集計 ➔ プルダウン自動セット ===
         const loadCategoryTeams = async () => {
             const category = document.getElementById('categorySelect').value;
+            const slotContainer = document.getElementById('slotSelectorContainer');
+            const modeBadge = document.getElementById('modeBadge');
+            const selectorTitle = document.getElementById('selectorTitle');
+            slotContainer.innerHTML = ''; // 一旦クリア
+
             try {
-                // データのキャッシュ取得
                 if (allTeamsList.length === 0) {
                     const res = await fetch('/api/teams');
                     allTeamsList = await res.json();
@@ -115,69 +97,77 @@
                 allMatchesList = await resMatches.json();
 
                 const filteredTeams = allTeamsList.filter(t => t.category === category);
+                const leagueMatches = allMatchesList.filter(m => m.category === category && m.stage === '予選リーグ');
 
-                // プルダウンのオプションを初期ビルド
-                for (let i = 0; i < 6; i++) {
-                    const select = document.getElementById(`slot_${i}`);
-                    select.innerHTML = '<option value="">-- 未選出（空枠） --</option>';
-                    filteredTeams.forEach(team => {
-                        const opt = document.createElement('option');
-                        opt.value = team.team_name;
-                        opt.setAttribute('data-org', team.organization);
-                        opt.innerText = `${team.team_name} (${team.organization})`;
-                        select.appendChild(opt);
+                // 🔥 モード判定：予選リーグの試合が1件もない場合はストレートトーナメントモード
+                if (leagueMatches.length === 0) {
+                    modeBadge.innerText = '予選なし：ストレートTモード 🎌';
+                    modeBadge.className = 'text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded ml-2 font-bold';
+                    selectorTitle.innerText = '▼ 登録チーム一覧からトーナメントに出場するチームを順に選択してください';
+
+                    // 登録チーム数に合わせてセレクトボックスを生成（最大8枠、またはチーム数分）
+                    const slotCount = Math.max(4, filteredTeams.length);
+                    for (let i = 0; i < slotCount; i++) {
+                        createSlotSelect(slotContainer, `slot_${i}`, `エントリー枠 ${i + 1}`, filteredTeams, filteredTeams[i]?.team_name || '');
+                    }
+                } else {
+                    // 予選リーグが存在する通常モード
+                    modeBadge.innerText = '予選連動モード ⚡';
+                    modeBadge.className = 'text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded ml-2 font-bold';
+                    selectorTitle.innerText = '▼ 予選結果（勝者数）に基づき、自動選出されています（同点時の手動調整も可能）';
+
+                    // 1. 全自動で存在する全予選リーグを算出
+                    const teamStats = {};
+                    filteredTeams.forEach(t => {
+                        teamStats[t.team_name] = { wins: 0, team: t, league: '不明' };
+                    });
+
+                    leagueMatches.forEach(m => {
+                        const leagueName = m.details && m.details.league ? m.details.league : 'Aリーグ';
+                        if (!teamStats[m.teamA]) teamStats[m.teamA] = { wins: 0, team: { team_name: m.teamA, organization: '' }, league: leagueName };
+                        if (!teamStats[m.teamB]) teamStats[m.teamB] = { wins: 0, team: { team_name: m.teamB, organization: '' }, league: leagueName };
+                        
+                        teamStats[m.teamA].league = leagueName;
+                        teamStats[m.teamB].league = leagueName;
+
+                        if (m.status === 'finished') {
+                            if (m.scoreA > m.scoreB) teamStats[m.teamA].wins += 3;
+                            else if (m.scoreB > m.scoreA) teamStats[m.teamB].wins += 3;
+                            else {
+                                teamStats[m.teamA].wins += 1;
+                                teamStats[m.teamB].wins += 1;
+                            }
+                        }
+                    });
+
+                    const leagues = {};
+                    Object.values(teamStats).forEach(stat => {
+                        if (stat.league === '不明') return;
+                        if (!leagues[stat.league]) leagues[stat.league] = [];
+                        leagues[stat.league].push(stat);
+                    });
+
+                    // 2. リーグ名（A, B, C...）順にソート
+                    const sortedLeagueNames = Object.keys(leagues).sort();
+                    let slotIdx = 0;
+
+                    // 各リーグごとにソートし、1位と2位の枠を動的に生成
+                    sortedLeagueNames.forEach(lName => {
+                        // 勝ち点順にソート（同点でも必ず配列要素が分かれるため重複を防止）
+                        leagues[lName].sort((a, b) => b.wins - a.wins);
+
+                        const firstTeam = leagues[lName][0]?.team.team_name || '';
+                        const secondTeam = leagues[lName][1]?.team.team_name || '';
+
+                        // 1位のセレクトボックス生成
+                        createSlotSelect(slotContainer, `slot_${slotIdx}`, `${lName} 1位`, filteredTeams, firstTeam);
+                        slotIdx++;
+
+                        // 2位のセレクトボックス生成
+                        createSlotSelect(slotContainer, `slot_${slotIdx}`, `${lName} 2位`, filteredTeams, secondTeam);
+                        slotIdx++;
                     });
                 }
-
-                // 🌟 【目玉機能】予選リーグ結果から1位・2位を自動計算するロジック
-                const leagueMatches = allMatchesList.filter(m => m.category === category && m.stage === '予選リーグ');
-                
-                // 各チームの勝ち点を集計するオブジェクト
-                const teamStats = {};
-                filteredTeams.forEach(t => {
-                    teamStats[t.team_name] = { wins: 0, team: t, league: '不明' };
-                });
-
-                leagueMatches.forEach(m => {
-                    const leagueName = m.details && m.details.league ? m.details.league : 'Aリーグ';
-                    if (!teamStats[m.teamA]) teamStats[m.teamA] = { wins: 0, team: { team_name: m.teamA, organization: '' }, league: leagueName };
-                    if (!teamStats[m.teamB]) teamStats[m.teamB] = { wins: 0, team: { team_name: m.teamB, organization: '' }, league: leagueName };
-                    
-                    teamStats[m.teamA].league = leagueName;
-                    teamStats[m.teamB].league = leagueName;
-
-                    // 勝者数(score)が多い方に勝ち点をプラス
-                    if (m.status === 'finished') {
-                        if (m.scoreA > m.scoreB) teamStats[m.teamA].wins += 3; // 勝利
-                        else if (m.scoreB > m.scoreA) teamStats[m.teamB].wins += 3;
-                        else {
-                            teamStats[m.teamA].wins += 1; // 引き分け
-                            teamStats[m.teamB].wins += 1;
-                        }
-                    }
-                });
-
-                // リーグごとにチームを分類してソート
-                const leagues = { 'Aリーグ': [], 'Bリーグ': [], 'Cリーグ': [] };
-                Object.values(teamStats).forEach(stat => {
-                    if (leagues[stat.league]) leagues[stat.league].push(stat);
-                });
-
-                // 各リーグ内を勝ち点順にソート（1位、2位を決定）
-                const sortedLeagues = {};
-                ['Aリーグ', 'Bリーグ', 'Cリーグ'].forEach(lName => {
-                    leagues[lName].sort((a, b) => b.wins - a.wins);
-                    sortedLeagues[lName] = leagues[lName];
-                });
-
-                // 計算した1位・2位のチーム名をプルダウンに自動割り当て（自動選択状態にする）
-                // slot_0: A1位, slot_1: B1位, slot_2: C1位, slot_3: A2位, slot_4: B2位, slot_5: C2位
-                if (sortedLeagues['Aリーグ'][0]) document.getElementById('slot_0').value = sortedLeagues['Aリーグ'][0].team.team_name;
-                if (sortedLeagues['Bリーグ'][0]) document.getElementById('slot_1').value = sortedLeagues['Bリーグ'][0].team.team_name;
-                if (sortedLeagues['Cリーグ'][0]) document.getElementById('slot_2').value = sortedLeagues['Cリーグ'][0].team.team_name;
-                if (sortedLeagues['Aリーグ'][1]) document.getElementById('slot_3').value = sortedLeagues['Aリーグ'][1].team.team_name;
-                if (sortedLeagues['Bリーグ'][1]) document.getElementById('slot_4').value = sortedLeagues['Bリーグ'][1].team.team_name;
-                if (sortedLeagues['Cリーグ'][1]) document.getElementById('slot_5').value = sortedLeagues['Cリーグ'][1].team.team_name;
 
                 // 山の表示をクリア
                 document.getElementById('leftBracket').innerHTML = '';
@@ -188,12 +178,36 @@
             }
         };
 
+        // セレクトボックスを動的生成するヘルパー関数
+        const createSlotSelect = (container, id, labelText, teams, defaultValue) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'bg-white p-2 rounded border shadow-sm';
+            wrapper.innerHTML = `<label class="block text-xs font-bold text-gray-600 mb-1">${labelText}</label>`;
+
+            const select = document.createElement('select');
+            select.id = id;
+            select.className = 'team-slot-select w-full border p-1 rounded text-xs bg-white focus:ring-indigo-500 font-medium';
+            select.innerHTML = '<option value="">-- 未選出（空枠） --</option>';
+
+            teams.forEach(team => {
+                const opt = document.createElement('option');
+                opt.value = team.team_name;
+                opt.setAttribute('data-org', team.organization);
+                opt.innerText = `${team.team_name} (${team.organization})`;
+                if (team.team_name === defaultValue) opt.selected = true;
+                select.appendChild(opt);
+            });
+
+            wrapper.appendChild(select);
+            container.appendChild(wrapper);
+        };
+
         // === 2. 同門を左右の山に隔離する自動抽選 ===
         window.autoDrawFinals = () => {
             const selectedTeams = [];
+            const selects = document.querySelectorAll('.team-slot-select');
 
-            for (let i = 0; i < 6; i++) {
-                const select = document.getElementById(`slot_${i}`);
+            selects.forEach(select => {
                 if (select.value) {
                     const selectedOpt = select.options[select.selectedIndex];
                     selectedTeams.push({
@@ -201,10 +215,10 @@
                         organization: selectedOpt.getAttribute('data-org')
                     });
                 }
-            }
+            });
 
             if (selectedTeams.length === 0) {
-                alert("予選通過チームが選択されていません。自動セットされない場合は、手動でプルダウンを選んでください。");
+                alert("進出チームが選択されていません。手動でプルダウンを選んでから実行してください。");
                 return;
             }
 
@@ -358,11 +372,9 @@
 
                 if (result.success) {
                     alert(`🏆 決勝トーナメント表を確定しました！\n観客画面にリアルタイム配信しました。`);
-                    
-                    // 🌟【追加機能】確定が成功したら、入力画面へのジャンプボタンを動的に表示！
                     const jumpBtn = document.getElementById('jumpToStep3Btn');
                     if (jumpBtn) {
-                        jumpBtn.classList.remove('hidden'); // ボタンを表示
+                        jumpBtn.classList.remove('hidden');
                     }
                 } else {
                     alert('❌ 保存エラー: ' + result.error);
