@@ -9,21 +9,11 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .highlight-card {
-            border: 3px solid #eab308 !important;
+            border: 4px solid #eab308 !important;
             background-color: #fef9c3 !important;
-            transform: scale(1.02);
+            transform: scale(1.03);
             transition: all 0.3s;
-        }
-        /* 🏆 簡易トーナメントツリー用のカスタムCSS（スマホで見やすい縦並びツリー型） */
-        .tree-branch {
-            position: relative;
-        }
-        .tree-branch::after {
-            content: "";
-            position: absolute;
-            right: -16px; top: 50%;
-            width: 16px; height: 2px;
-            background-color: #cbd5e1;
+            box-shadow: 0 10px 15px -3px rgba(234, 179, 8, 0.3);
         }
     </style>
 </head>
@@ -52,8 +42,8 @@
         <div class="max-w-md mx-auto">
             <label class="block text-xs font-bold text-indigo-900 mb-1">🔍 マイチーム（道場・学校名）を検索・マーク</label>
             <div class="relative">
-                <input type="text" id="teamSearchInput" oninput="highlightMyTeam()" placeholder="例: 福岡武道館、桜剣友会..." class="w-full pl-10 pr-4 py-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-600 font-bold text-sm shadow-sm">
-                <span class="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
+                <input type="text" id="teamSearchInput" oninput="highlightMyTeam()" placeholder="例: 福岡武道館、桜剣友会..." class="w-full pl-10 pr-4 py-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-600 font-bold text-base shadow-sm">
+                <span class="absolute left-3 top-2.5 text-gray-400 text-base">🔍</span>
             </div>
         </div>
     </div>
@@ -74,7 +64,7 @@
         <button onclick="switchStage('tournament')" id="tab_tournament" class="stage-tab pb-2 px-2 text-sm font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 transition">決勝トーナメント</button>
     </div>
 
-    <!-- 📊 各リーグの所属チーム一覧（予選タブ時のみ表示） -->
+    <!-- 📊 各リーグの所属チーム一覧 -->
     <div id="leagueMembersArea" class="max-w-4xl mx-auto px-4 mt-4">
         <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3">
             <h3 class="text-xs font-bold text-indigo-900 mb-2 flex items-center gap-1">📋 各リーグの所属チーム一覧</h3>
@@ -83,7 +73,7 @@
     </div>
 
     <!-- 試合カード・ツリー描画メインエリア -->
-    <main class="p-4 max-w-4xl mx-auto pb-20" id="mainContent">
+    <main class="p-4 max-w-5xl mx-auto pb-20" id="mainContent">
     </main>
 
     <!-- モーダル詳細 -->
@@ -154,7 +144,6 @@
             highlightMyTeam();
         };
 
-        // 🌟 修正ポイント：データを走査して存在する全リーグを動的に構築する
         const renderLeagueOverview = () => {
             const listDiv = document.getElementById('leagueGroupList');
             listDiv.innerHTML = '';
@@ -163,7 +152,6 @@
             const filtered = allMatches.filter(m => m.category === currentCategory && m.stage === '予選リーグ');
             const groups = {};
 
-            // 1. 返ってきた試合のdetailsから自動でリーグを収集（不戦勝枠は除外）
             filtered.forEach(m => {
                 const leagueName = m.details && m.details.league ? m.details.league : 'Aリーグ';
                 if (!groups[leagueName]) {
@@ -173,7 +161,6 @@
                 if (m.teamB && m.teamB !== '（不戦勝枠）') groups[leagueName].add(m.teamB);
             });
 
-            // 2. リーグ名（A, B, C...）をアルファベット順にソートして出力
             const sortedLeagueNames = Object.keys(groups).sort();
 
             if (sortedLeagueNames.length === 0) {
@@ -237,83 +224,115 @@
                 const w3 = m3 ? getWinner(m3) || '準決勝進出' : '3試合目勝者';
 
                 const treeWrapper = document.createElement('div');
-                treeWrapper.className = "w-full overflow-x-auto no-scrollbar py-4 bg-white rounded-xl shadow-sm border p-4 select-none";
+                // 🌟 横スクロール対応かつパディング・フォントサイズの最適化
+                treeWrapper.className = "w-full overflow-x-auto pb-6 pt-2 bg-white rounded-xl shadow-md border border-gray-200 p-6 select-none";
                 
+                // 🌟 w-56 から w-80 (約320px) へカード幅と余白を劇的拡大、フォントを太く大きく修正
                 treeWrapper.innerHTML = `
-                    <div class="text-center font-bold text-xs text-indigo-900 mb-6 border-b pb-2">📊 左右にスクロール可能 ＆ タップで詳細オーダー表示</div>
+                    <div class="text-center font-black text-sm text-indigo-900 mb-8 border-b-2 border-dashed pb-3 flex justify-center items-center gap-1.5">
+                        <span>📊 左右にスワイプ可能</span>
+                        <span class="bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded-full">タップで詳細スコア表示</span>
+                    </div>
                     
-                    <div class="flex items-center min-w-[700px] justify-between px-4 relative">
-                        <div class="w-56 space-y-16 flex flex-col justify-center">
-                            <div class="border rounded-lg p-2 bg-slate-50 relative match-card hover:shadow transition" onclick="openModalById('${m1?.id}')">
-                                <div class="text-[9px] text-slate-400 font-bold mb-1">1回戦 第1試合</div>
-                                <div class="text-xs space-y-1">
-                                    <div class="flex justify-between ${m1 && getWinner(m1)===m1.teamA ? 'text-indigo-700 font-black' : ''}"><span>${m1?.teamA || '-'}</span><span>${m1?.status==='finished'?m1.scoreA:''}</span></div>
-                                    <div class="border-t my-1"></div>
-                                    <div class="flex justify-between ${m1 && getWinner(m1)===m1.teamB ? 'text-indigo-700 font-black' : ''}"><span>${m1?.teamB || '-'}</span><span>${m1?.status==='finished'?m1.scoreB:''}</span></div>
+                    <div class="flex items-center min-w-[1050px] justify-between px-6 relative py-4">
+                        <!-- 1回戦カラム -->
+                        <div class="w-80 space-y-20 flex flex-col justify-center">
+                            <!-- 第1試合 -->
+                            <div class="border-2 border-gray-300 rounded-xl p-3.5 bg-slate-50 relative cursor-pointer hover:border-indigo-500 hover:shadow-lg transition-all" data-team-a="${m1?.teamA || ''}" data-team-b="${m1?.teamB || ''}" onclick="openModalById('${m1?.id}')">
+                                <div class="text-xs text-slate-500 font-black mb-1.5 bg-slate-200/60 px-2 py-0.5 rounded inline-block">1回戦 第1試合</div>
+                                <div class="text-base space-y-2">
+                                    <div class="flex justify-between items-center ${m1 && getWinner(m1)===m1.teamA ? 'text-indigo-800 font-black' : 'font-bold text-gray-700'}">
+                                        <span class="truncate pr-2">${m1?.teamA || '-'}</span>
+                                        <span class="text-xl px-2 bg-white border rounded shadow-sm min-w-[28px] text-center">${m1?.status==='finished'?m1.scoreA:''}</span>
+                                    </div>
+                                    <div class="border-t border-gray-200 my-1"></div>
+                                    <div class="flex justify-between items-center ${m1 && getWinner(m1)===m1.teamB ? 'text-indigo-800 font-black' : 'font-bold text-gray-700'}">
+                                        <span class="truncate pr-2">${m1?.teamB || '-'}</span>
+                                        <span class="text-xl px-2 bg-white border rounded shadow-sm min-w-[28px] text-center">${m1?.status==='finished'?m1.scoreB:''}</span>
+                                    </div>
                                 </div>
-                                <div class="absolute right-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
+                                <div class="absolute right-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
                             </div>
 
-                            <div class="border rounded-lg p-2 bg-slate-50 relative match-card hover:shadow transition" onclick="openModalById('${m2?.id}')">
-                                <div class="text-[9px] text-slate-400 font-bold mb-1">1回戦 第2試合</div>
-                                <div class="text-xs space-y-1">
-                                    <div class="flex justify-between ${m2 && getWinner(m2)===m2.teamA ? 'text-indigo-700 font-black' : ''}"><span>${m2?.teamA || '-'}</span><span>${m2?.status==='finished'?m2.scoreA:''}</span></div>
-                                    <div class="border-t my-1"></div>
-                                    <div class="flex justify-between ${m2 && getWinner(m2)===m2.teamB ? 'text-indigo-700 font-black' : ''}"><span>${m2?.teamB || '-'}</span><span>${m2?.status==='finished'?m2.scoreB:''}</span></div>
+                            <!-- 第2試合 -->
+                            <div class="border-2 border-gray-300 rounded-xl p-3.5 bg-slate-50 relative cursor-pointer hover:border-indigo-500 hover:shadow-lg transition-all" data-team-a="${m2?.teamA || ''}" data-team-b="${m2?.teamB || ''}" onclick="openModalById('${m2?.id}')">
+                                <div class="text-xs text-slate-500 font-black mb-1.5 bg-slate-200/60 px-2 py-0.5 rounded inline-block">1回戦 第2試合</div>
+                                <div class="text-base space-y-2">
+                                    <div class="flex justify-between items-center ${m2 && getWinner(m2)===m2.teamA ? 'text-indigo-800 font-black' : 'font-bold text-gray-700'}">
+                                        <span class="truncate pr-2">${m2?.teamA || '-'}</span>
+                                        <span class="text-xl px-2 bg-white border rounded shadow-sm min-w-[28px] text-center">${m2?.status==='finished'?m2.scoreA:''}</span>
+                                    </div>
+                                    <div class="border-t border-gray-200 my-1"></div>
+                                    <div class="flex justify-between items-center ${m2 && getWinner(m2)===m2.teamB ? 'text-indigo-800 font-black' : 'font-bold text-gray-700'}">
+                                        <span class="truncate pr-2">${m2?.teamB || '-'}</span>
+                                        <span class="text-xl px-2 bg-white border rounded shadow-sm min-w-[28px] text-center">${m2?.status==='finished'?m2.scoreB:''}</span>
+                                    </div>
                                 </div>
-                                <div class="absolute right-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
+                                <div class="absolute right-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
                             </div>
 
-                            <div class="border rounded-lg p-2 bg-slate-50 relative match-card hover:shadow transition" onclick="openModalById('${m3?.id}')">
-                                <div class="text-[9px] text-slate-400 font-bold mb-1">1回戦 第3試合</div>
-                                <div class="text-xs space-y-1">
-                                    <div class="flex justify-between ${m3 && getWinner(m3)===m3.teamA ? 'text-indigo-700 font-black' : ''}"><span>${m3?.teamA || '-'}</span><span>${m3?.status==='finished'?m3.scoreA:''}</span></div>
-                                    <div class="border-t my-1"></div>
-                                    <div class="flex justify-between ${m3 && getWinner(m3)===m3.teamB ? 'text-indigo-700 font-black' : ''}"><span>${m3?.teamB || '-'}</span><span>${m3?.status==='finished'?m3.scoreB:''}</span></div>
+                            <!-- 第3試合 -->
+                            <div class="border-2 border-gray-300 rounded-xl p-3.5 bg-slate-50 relative cursor-pointer hover:border-indigo-500 hover:shadow-lg transition-all" data-team-a="${m3?.teamA || ''}" data-team-b="${m3?.teamB || ''}" onclick="openModalById('${m3?.id}')">
+                                <div class="text-xs text-slate-500 font-black mb-1.5 bg-slate-200/60 px-2 py-0.5 rounded inline-block">1回戦 第3試合</div>
+                                <div class="text-base space-y-2">
+                                    <div class="flex justify-between items-center ${m3 && getWinner(m3)===m3.teamA ? 'text-indigo-800 font-black' : 'font-bold text-gray-700'}">
+                                        <span class="truncate pr-2">${m3?.teamA || '-'}</span>
+                                        <span class="text-xl px-2 bg-white border rounded shadow-sm min-w-[28px] text-center">${m3?.status==='finished'?m3.scoreA:''}</span>
+                                    </div>
+                                    <div class="border-t border-gray-200 my-1"></div>
+                                    <div class="flex justify-between items-center ${m3 && getWinner(m3)===m3.teamB ? 'text-indigo-800 font-black' : 'font-bold text-gray-700'}">
+                                        <span class="truncate pr-2">${m3?.teamB || '-'}</span>
+                                        <span class="text-xl px-2 bg-white border rounded shadow-sm min-w-[28px] text-center">${m3?.status==='finished'?m3.scoreB:''}</span>
+                                    </div>
                                 </div>
-                                <div class="absolute right-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
+                                <div class="absolute right-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
                             </div>
                         </div>
 
-                        <div class="w-56 space-y-28 flex flex-col justify-center pl-4 relative">
-                            <div class="absolute left-0 top-[65px] w-0.5 h-[105px] bg-slate-300"></div>
+                        <!-- 準決勝カラム -->
+                        <div class="w-80 space-y-44 flex flex-col justify-center pl-6 relative">
+                            <!-- 試合間の縦縦接続線 (左側ツリー分岐用) -->
+                            <div class="absolute left-0 top-[115px] w-1 h-[170px] bg-slate-400"></div>
                             
-                            <div class="border rounded-lg p-2 bg-indigo-50/40 relative">
-                                <div class="text-[9px] text-indigo-700 font-bold mb-1">準決勝 第1試合</div>
-                                <div class="text-xs space-y-1 font-bold">
-                                    <div class="truncate text-slate-700">${w1}</div>
-                                    <div class="border-t my-1 border-indigo-200"></div>
-                                    <div class="truncate text-slate-700">${w2}</div>
+                            <!-- 準決勝 第1試合 -->
+                            <div class="border-2 border-indigo-200 rounded-xl p-4 bg-indigo-50/50 relative shadow-sm">
+                                <div class="text-xs text-indigo-800 font-black mb-1.5 bg-indigo-100 px-2 py-0.5 rounded inline-block">準決勝 第1試合</div>
+                                <div class="text-base space-y-2 font-black">
+                                    <div class="truncate text-slate-800 bg-white/80 p-1 px-2 border rounded border-gray-200 shadow-inner">${w1}</div>
+                                    <div class="truncate text-slate-800 bg-white/80 p-1 px-2 border rounded border-gray-200 shadow-inner">${w2}</div>
                                 </div>
-                                <div class="absolute right-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
-                                <div class="absolute left-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
+                                <div class="absolute right-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
+                                <div class="absolute left-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
                             </div>
 
-                            <div class="border rounded-lg p-2 bg-indigo-50/40 relative">
-                                <div class="text-[9px] text-indigo-700 font-bold mb-1">準決勝 第2試合</div>
-                                <div class="text-xs space-y-1 font-bold">
-                                    <div class="truncate text-slate-700">${w3}</div>
-                                    <div class="border-t my-1 border-indigo-200"></div>
-                                    <div class="truncate text-gray-400">（不戦勝・シード山）</div>
+                            <!-- 準決勝 第2試合 -->
+                            <div class="border-2 border-indigo-200 rounded-xl p-4 bg-indigo-50/50 relative shadow-sm">
+                                <div class="text-xs text-indigo-800 font-black mb-1.5 bg-indigo-100 px-2 py-0.5 rounded inline-block">準決勝 第2試合</div>
+                                <div class="text-base space-y-2 font-black">
+                                    <div class="truncate text-slate-800 bg-white/80 p-1 px-2 border rounded border-gray-200 shadow-inner">${w3}</div>
+                                    <div class="truncate text-gray-400 bg-gray-100/80 p-1 px-2 border rounded border-dashed border-gray-300">（不戦勝・シード山）</div>
                                 </div>
-                                <div class="absolute right-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
-                                <div class="absolute left-[-16px] top-1/2 w-4 h-0.5 bg-slate-300"></div>
+                                <div class="absolute right-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
+                                <div class="absolute left-[-24px] top-1/2 w-6 h-1 bg-slate-400"></div>
                             </div>
                             
-                            <div class="absolute left-0 top-[230px] w-0.5 h-[105px] bg-slate-300"></div>
+                            <!-- シード接続用の縦線 -->
+                            <div class="absolute left-0 top-[385px] w-1 h-[170px] bg-slate-400"></div>
                         </div>
 
-                        <div class="w-56 flex flex-col justify-center pl-4 relative">
-                            <div class="absolute left-0 top-[115px] w-0.5 h-[165px] bg-slate-400"></div>
+                        <!-- 決勝戦カラム -->
+                        <div class="w-80 flex flex-col justify-center pl-6 relative">
+                            <!-- 決勝へ伸びる中央の縦接続線 -->
+                            <div class="absolute left-0 top-[195px] w-1 h-[270px] bg-red-400"></div>
 
-                            <div class="border-2 border-red-500 rounded-lg p-3 bg-gradient-to-br from-red-50 to-white relative shadow-md">
-                                <div class="text-[10px] font-black text-red-600 mb-1 flex items-center gap-0.5">🏆 決勝戦</div>
-                                <div class="text-xs space-y-1 font-black text-slate-800">
-                                    <div class="truncate">準決勝1の勝者</div>
-                                    <div class="border-t my-1.5 border-red-200"></div>
-                                    <div class="truncate">準決勝2の勝者</div>
+                            <!-- 決勝カード -->
+                            <div class="border-4 border-red-500 rounded-2xl p-5 bg-gradient-to-br from-red-50 via-white to-red-50/30 relative shadow-xl transform hover:scale-[1.01] transition-all">
+                                <div class="text-xs font-black text-red-600 mb-2 flex items-center gap-1 bg-red-100/80 px-2.5 py-0.5 rounded-full w-max">🏆 決勝戦</div>
+                                <div class="text-base space-y-2.5 font-black text-slate-800">
+                                    <div class="truncate bg-white p-1.5 px-3 border border-red-200 rounded-xl shadow-sm">準決勝1の勝者</div>
+                                    <div class="truncate bg-white p-1.5 px-3 border border-red-200 rounded-xl shadow-sm">準決勝2の勝者</div>
                                 </div>
-                                <div class="absolute left-[-16px] top-1/2 w-4 h-0.5 bg-slate-400"></div>
+                                <div class="absolute left-[-24px] top-1/2 w-6 h-1 bg-red-400"></div>
                             </div>
                         </div>
                     </div>
@@ -324,7 +343,7 @@
 
         const createMatchCard = (match) => {
             const card = document.createElement('div');
-            card.className = 'match-card bg-white rounded-lg shadow-sm border border-gray-200 mb-3 overflow-hidden cursor-pointer hover:shadow-md transition-all';
+            card.className = 'match-card bg-white rounded-xl shadow-md border-2 border-gray-200 mb-4 overflow-hidden cursor-pointer hover:border-indigo-400 hover:shadow-lg transition-all duration-200';
             card.setAttribute('data-team-a', match.teamA);
             card.setAttribute('data-team-b', match.teamB);
             card.onclick = () => openModal(match);
@@ -334,35 +353,35 @@
             let scoreColor = 'text-indigo-600';
 
             if (match.status === 'finished') {
-                statusBadge = `<span class="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded font-bold">試合終了</span>`;
+                statusBadge = `<span class="bg-blue-600 text-white text-xs px-2.5 py-0.5 rounded font-black">試合終了</span>`;
                 scoreText = `${match.scoreA} - ${match.scoreB}`;
-                scoreColor = 'text-gray-800 font-black';
+                scoreColor = 'text-gray-900 font-black text-2xl';
             } else if (match.status === 'ongoing') {
-                statusBadge = `<span class="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded font-bold animate-pulse">試合中 ⚔️</span>`;
+                statusBadge = `<span class="bg-red-500 text-white text-xs px-2.5 py-0.5 rounded font-black animate-pulse">試合中 ⚔️</span>`;
                 scoreText = `${match.scoreA} - ${match.scoreB}`;
-                scoreColor = 'text-red-600 font-black';
+                scoreColor = 'text-red-600 font-black text-2xl';
             } else {
-                statusBadge = `<span class="bg-gray-400 text-white text-[10px] px-2 py-0.5 rounded font-bold">試合前</span>`;
+                statusBadge = `<span class="bg-gray-400 text-white text-xs px-2.5 py-0.5 rounded font-black">試合前</span>`;
             }
 
             card.innerHTML = `
-                <div class="bg-gray-50 px-3 py-1.5 border-b text-xs text-gray-500 font-bold flex justify-between items-center">
+                <div class="bg-gray-50 px-4 py-2 border-b text-sm text-gray-600 font-black flex justify-between items-center">
                     <span>${match.title}</span>
                     ${statusBadge}
                 </div>
                 <div class="p-4 flex justify-between items-center text-center">
-                    <div class="w-5/12 font-bold text-gray-800 truncate">${match.teamA}</div>
+                    <div class="w-5/12 font-black text-lg text-gray-800 truncate">${match.teamA}</div>
                     <div class="w-2/12 flex flex-col items-center">
-                        <span class="text-xl ${scoreColor}">${scoreText}</span>
+                        <span class="${scoreColor} px-2 py-0.5 bg-gray-50 border rounded-lg shadow-inner min-w-[60px] text-center">${scoreText}</span>
                     </div>
-                    <div class="w-5/12 font-bold text-gray-800 truncate">${match.teamB}</div>
+                    <div class="w-5/12 font-black text-lg text-gray-800 truncate">${match.teamB}</div>
                 </div>
             `;
             return card;
         };
 
         window.openModalById = (matchId) => {
-            if(!matchId) return;
+            if(!matchId || matchId === 'undefined') return;
             const match = allMatches.find(m => m.id === matchId);
             if(match) openModal(match);
         };
@@ -386,7 +405,7 @@
             } else {
                 match.details.forEach(detail => {
                     const row = document.createElement('div');
-                    row.className = 'flex justify-between items-center py-2 border-b last:border-b-0 text-sm';
+                    row.className = 'flex justify-between items-center py-2 border-b last:border-b-0 text-base';
                     
                     const formatPoint = (pt) => {
                         if(!pt) return '-';
@@ -398,7 +417,7 @@
 
                     row.innerHTML = `
                         <div class="w-5/12 flex justify-end gap-2 pr-2">${formatPoint(detail.a1)} ${formatPoint(detail.a2)}</div>
-                        <div class="w-2/12 text-center font-bold text-gray-400 text-xs bg-gray-50 rounded py-1">${detail.pos}</div>
+                        <div class="w-2/12 text-center font-black text-gray-500 text-xs bg-gray-100 rounded py-1">${detail.pos}</div>
                         <div class="w-5/12 flex justify-start gap-2 pl-2">${formatPoint(detail.b1)} ${formatPoint(detail.b2)}</div>
                     `;
                     detailsContainer.appendChild(row);
@@ -411,26 +430,36 @@
 
         window.highlightMyTeam = () => {
             const keyword = document.getElementById('teamSearchInput').value.trim();
-            const cards = document.querySelectorAll('.match-card, .match-row-item');
+            const cards = document.querySelectorAll('.match-card, [data-team-a]');
             const listItems = document.querySelectorAll('.league-team-item');
 
             cards.forEach(card => card.classList.remove('highlight-card'));
-            listItems.forEach(item => item.classList.remove('text-yellow-600', 'font-black'));
+            listItems.forEach(item => item.classList.remove('text-yellow-600', 'font-black', 'bg-yellow-100', 'p-1', 'rounded'));
 
             if (!keyword) return;
+
+            let firstFoundCard = null;
 
             cards.forEach(card => {
                 const teamA = card.getAttribute('data-team-a') || '';
                 const teamB = card.getAttribute('data-team-b') || '';
                 if (teamA.includes(keyword) || teamB.includes(keyword)) {
                     card.classList.add('highlight-card');
+                    if (!firstFoundCard) firstFoundCard = card;
                 }
             });
 
             listItems.forEach(item => {
                 const team = item.getAttribute('data-team');
-                if (team && team.includes(keyword)) { item.classList.add('text-yellow-600', 'font-black'); }
+                if (team && team.includes(keyword)) { 
+                    item.classList.add('text-yellow-600', 'font-black', 'bg-yellow-100', 'p-1', 'rounded'); 
+                }
             });
+
+            // 🌟【親切機能】検索でヒットした最初のカードの位置まで画面を自動スクロールさせる
+            if (firstFoundCard) {
+                firstFoundCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+            }
         };
 
         fetchMatchData();
