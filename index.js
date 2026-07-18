@@ -1,7 +1,15 @@
-// // // require('dotenv').config();
+// 💡 dotenvがインストールされていなくてもエラーにせず、あれば読み込む設定
+try {
+    require('dotenv').config();
+} catch (e) {
+    // Render本番環境など、dotenvがなくても落とさずに無視する
+}
+
+// 📦 必要なモジュールを一元管理（重複を排除）
 const path = require('path');
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -342,21 +350,17 @@ app.post('/api/tournament/generate', async (req, res) => {
             if (count4 > 0) buildLeagueGroups(count4, 4);
 
         // ==========================================
-        // 🏆 公正な決勝トーナメント自動生成ロジック (課題B・C解決)
+        // 🏆 公正な決勝トーナメント自動生成ロジック
         // ==========================================
         } else {
             const orgTeams = [...teams];
             const N = orgTeams.length;
 
-            // 1. トーナメントの基準サイズ（2の乗数: 4, 8, 16, 32, 64...）を決める
             let T = 2;
             while (T < N) { T *= 2; }
 
-            // シード数（BYE枠数）の算出
             const numByes = T - N;
 
-            // 2. 四隅・中心へ均等分散させるためのシード位置ベースのインデックス順を算出
-            // (1位と2位が決勝まで、3位と4位が準決勝まで当たらない古典的配置アルゴリズム)
             let seedOrder = [0, 1];
             while (seedOrder.length < T) {
                 const nextOrder = [];
@@ -368,13 +372,9 @@ app.post('/api/tournament/generate', async (req, res) => {
                 seedOrder = nextOrder;
             }
 
-            // 3. 同門対決の回避とシード分散を考慮したスロット配置
-            // 強いチーム(または予選上位)から順に割り当てるため、同門が連続しないよう一度ソート
             const sortedTeams = optimizeTeamDistribution(orgTeams);
             const slots = new Array(T).fill(null);
 
-            // シード枠 (BYE) を配置するスロットを決定 (下位シードから順に四隅へ分散)
-            // seedOrderの数値が大きいスロットをBYE（空枠）として優先指定
             const byeSlots = seedOrder
                 .map((seed, index) => ({ seed, index }))
                 .sort((a, b) => b.seed - a.seed)
@@ -390,7 +390,6 @@ app.post('/api/tournament/generate', async (req, res) => {
                 }
             }
 
-            // 4. 配置されたスロットから1回戦の対戦カードを綺麗な順序で生成・採番
             let matchNum = 1;
             for (let i = 0; i < T; i += 2) {
                 const teamA = slots[i];
@@ -399,14 +398,12 @@ app.post('/api/tournament/generate', async (req, res) => {
                 const isByeA = teamA.team_name === '（シード）';
                 const isByeB = teamB.team_name === '（シード）';
 
-                // 両方シードの場合はカード化スキップ
                 if (isByeA && isByeB) continue;
 
                 let status = 'scheduled';
                 let scoreA = 0;
                 let scoreB = 0;
 
-                // 片方がシードの場合は自動的に不戦勝(finished)処理
                 if (isByeA || isByeB) {
                     status = 'finished';
                     scoreA = isByeB ? 1 : 0;
@@ -432,9 +429,6 @@ app.post('/api/tournament/generate', async (req, res) => {
             }
         }
 
-        // ==========================================
-        // 💾 データの安全な個別上書き保存処理 (課題B解決)
-        // ==========================================
         if (type === 'league') {
             await supabase.from('matches').delete().eq('category', category).eq('stage', '予選リーグ');
         } else {
