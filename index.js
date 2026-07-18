@@ -480,3 +480,10 @@ function optimizeTeamDistribution(teams) {
     }
     return result;
 }
+
+// =================================================================
+// 🚀 サーバー起動（待ち受け開始）の記述を追加
+// =================================================================
+app.listen(PORT, () => {
+    console.log(`[🟢 Server Active] Tournament Manager is running on port ${PORT}`);
+});
