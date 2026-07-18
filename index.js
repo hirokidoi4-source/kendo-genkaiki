@@ -53,7 +53,31 @@ app.post('/api/match', async (req, res) => {
 app.post('/api/match_update', async (req, res) => {
     try {
         const { id, category, stage, title, teamA, teamB, scoreA, scoreB, status, details } = req.body;
-        const parsedDetails = typeof details === 'string' ? JSON.parse(details) : details;
+        let parsedDetails = typeof details === 'string' ? JSON.parse(details) : details;
+
+        // 🌟【重要バグ修正】既存の試合データがある場合、元のリーグ所属データ(details.league)を保護・マージする
+        if (id) {
+            const { data: existingMatch } = await supabase.from('matches').select('details').eq('id', id).single();
+            if (existingMatch && existingMatch.details) {
+                const oldDetails = typeof existingMatch.details === 'string' ? JSON.parse(existingMatch.details) : existingMatch.details;
+                
+                // もし元のデータがオブジェクトで、かつ新規の入力が配列（オーダー表）なら、オブジェクト形式に統合する
+                if (oldDetails && typeof oldDetails === 'object' && !Array.isArray(oldDetails)) {
+                    parsedDetails = {
+                        ...oldDetails,
+                        order_list: Array.isArray(parsedDetails) ? parsedDetails : (parsedDetails.order_list || [])
+                    };
+                } else if (oldDetails && oldDetails.league) {
+                    // 最低限リーグ名が存在すればマージ
+                    parsedDetails = {
+                        league: oldDetails.league,
+                        league_size: oldDetails.league_size,
+                        max_promoted: oldDetails.max_promoted,
+                        order_list: parsedDetails
+                    };
+                }
+            }
+        }
 
         const rowData = {
             category,
@@ -154,10 +178,8 @@ app.get('/api/teams', async (req, res) => {
     res.json(data || []);
 });
 
-// index.js の該当エンドポイントを以下のように修正・強化します
-
 app.post('/api/teams/import', async (req, res) => {
-    const incomingTeams = req.body; // admin.html から送られてくる配列
+    const incomingTeams = req.body; 
     
     if (!Array.isArray(incomingTeams) || incomingTeams.length === 0) {
         return res.status(400).json({ success: false, error: '有効なチームデータがありません。' });
@@ -166,10 +188,6 @@ app.post('/api/teams/import', async (req, res) => {
     try {
         console.log(`[Import] インポート処理を開始します。受信件数: ${incomingTeams.length}件`);
 
-        // ==========================================
-        // 1. 既存のチームデータを完全クリア（重複防止）
-        // ==========================================
-        // neq('id', 0) で全行を対象に削除を実行
         const { error: deleteError } = await supabase
             .from('teams')
             .delete()
@@ -184,15 +202,11 @@ app.post('/api/teams/import', async (req, res) => {
         }
         console.log('[Import] 既存データのクリーンアップが正常に完了しました（0件になりました）。');
 
-        // ==========================================
-        // 2. CSVの日本語部門名をシステムコードにマッピング変換
-        // ==========================================
         const categoryMap = {
             '小学生低学年': 'low_elem',
             '小学生団体': 'elem',
             '中学生団体': 'mid',
             '中学女子団体': 'mid_girls',
-            // 万が一、最初からコードで送られてきた場合のためのフォールバック
             'low_elem': 'low_elem',
             'elem': 'elem',
             'mid': 'mid',
@@ -200,7 +214,6 @@ app.post('/api/teams/import', async (req, res) => {
         };
 
         const formattedTeams = incomingTeams.map((t, index) => {
-            // 日本語の部門名からコードへ変換（トリムして余計な空白を除去）
             const rawCategory = (t.category || '').trim();
             const mappedCategory = categoryMap[rawCategory];
 
@@ -209,15 +222,12 @@ app.post('/api/teams/import', async (req, res) => {
             }
 
             return {
-                category: mappedCategory || rawCategory, // マッピングできなければ元の文字列
+                category: mappedCategory || rawCategory, 
                 team_name: (t.team_name || '').trim(),
                 organization: (t.organization || '').trim()
             };
         });
 
-        // ==========================================
-        // 3. 変換後のデータを一括インサート
-        // ==========================================
         const { data, error: insertError } = await supabase
             .from('teams')
             .insert(formattedTeams)
@@ -249,24 +259,20 @@ app.post('/api/tournament/generate', async (req, res) => {
         if (tError) return res.status(500).json({ error: tError.message });
         if (!teams || teams.length < 2) return res.status(400).json({ error: 'チーム数が足りません' });
 
-        // 同門隔離されたチーム配列を取得
         const optimizedTeams = optimizeTeamDistribution(teams);
         let matchesToInsert = [];
 
         if (type === 'league') {
             const totalTeams = optimizedTeams.length;
 
-            // 🌟 3チームリーグと4チームリーグの数を自動計算するロジック
-            // 基本を3チーム構成とし、余りを4チーム構成に割り振る
             let count4 = totalTeams % 3;
             let count3 = Math.floor(totalTeams / 3) - count4;
 
             if (count3 < 0) {
-                // チーム数が極端に少ない（例: 4チームや5チームなど）場合の調整
                 if (totalTeams === 4) {
                     count4 = 1; count3 = 0;
                 } else if (totalTeams === 5) {
-                    count4 = 1; count3 = 1; // 3チーム×1、4チーム×1（1枠不戦勝枠で補う）
+                    count4 = 1; count3 = 1; 
                 } else {
                     count4 = 0; count3 = Math.ceil(totalTeams / 3);
                 }
@@ -283,18 +289,15 @@ app.post('/api/tournament/generate', async (req, res) => {
             let teamIndex = 0;
             let currentGroupIdx = 0;
 
-            // リーグを分割・生成する共通関数
             const buildLeagueGroups = (groupCount, leagueSize) => {
                 for (let g = 0; g < groupCount; g++) {
                     const groupName = getGroupName(currentGroupIdx);
                     let curLeagueTeams = optimizedTeams.slice(teamIndex, teamIndex + leagueSize);
 
-                    // 割り当てられたチーム数が足りない場合は不戦勝枠で埋める
                     while (curLeagueTeams.length < leagueSize) {
                         curLeagueTeams.push({ team_name: '（不戦勝枠）', organization: 'なし' });
                     }
 
-                    // 3チームリーグは1位のみ（1）、4チームリーグは2位まで（2）進出 🎯
                     const maxPromoted = leagueSize === 4 ? 2 : 1;
 
                     let matchCount = 1;
@@ -314,7 +317,6 @@ app.post('/api/tournament/generate', async (req, res) => {
                                 scoreA: teamA === '（不戦勝枠）' ? 0 : (isBye ? 1 : 0),
                                 scoreB: teamB === '（不戦勝枠）' ? 0 : (isBye ? 1 : 0),
                                 status: isBye ? 'finished' : 'scheduled',
-                                // detailsの中にリーグ情報と進出可能枠数をしっかり保存 💾
                                 details: { 
                                     same_org: isSameOrg, 
                                     league: groupName, 
@@ -331,12 +333,10 @@ app.post('/api/tournament/generate', async (req, res) => {
                 }
             };
 
-            // 計算された数に基づいて、3チームリーグと4チームリーグを順に生成
             if (count3 > 0) buildLeagueGroups(count3, 3);
             if (count4 > 0) buildLeagueGroups(count4, 4);
 
         } else {
-            // 決勝トーナメント生成（既存のロジックをそのまま維持）
             for (let i = 0; i < optimizedTeams.length; i += 2) {
                 const teamA = optimizedTeams[i];
                 const teamB = optimizedTeams[i + 1] || { team_name: '（シード）', organization: '' };
@@ -355,7 +355,6 @@ app.post('/api/tournament/generate', async (req, res) => {
             }
         }
 
-        // 古い対戦データの削除と新規インサート
         if (type === 'league') {
             await supabase.from('matches').delete().eq('category', category).eq('stage', '予選リーグ');
         } else {
@@ -419,5 +418,5 @@ app.post('/api/tournament/save_final', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Supabase接続完了！本番モードで起動中: http://localhost:${PORT}`);
+    console.log(`🚀 Supabase接続完了！本本モードで起動中: http://localhost:${PORT}`);
 });
