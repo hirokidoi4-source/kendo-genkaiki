@@ -55,20 +55,17 @@ app.post('/api/match_update', async (req, res) => {
         const { id, category, stage, title, teamA, teamB, scoreA, scoreB, status, details } = req.body;
         let parsedDetails = typeof details === 'string' ? JSON.parse(details) : details;
 
-        // 🌟【重要バグ修正】既存の試合データがある場合、元のリーグ所属データ(details.league)を保護・マージする
         if (id) {
             const { data: existingMatch } = await supabase.from('matches').select('details').eq('id', id).single();
             if (existingMatch && existingMatch.details) {
                 const oldDetails = typeof existingMatch.details === 'string' ? JSON.parse(existingMatch.details) : existingMatch.details;
                 
-                // もし元のデータがオブジェクトで、かつ新規の入力が配列（オーダー表）なら、オブジェクト形式に統合する
                 if (oldDetails && typeof oldDetails === 'object' && !Array.isArray(oldDetails)) {
                     parsedDetails = {
                         ...oldDetails,
                         order_list: Array.isArray(parsedDetails) ? parsedDetails : (parsedDetails.order_list || [])
                     };
                 } else if (oldDetails && oldDetails.league) {
-                    // 最低限リーグ名が存在すればマージ
                     parsedDetails = {
                         league: oldDetails.league,
                         league_size: oldDetails.league_size,
@@ -337,20 +334,40 @@ app.post('/api/tournament/generate', async (req, res) => {
             if (count4 > 0) buildLeagueGroups(count4, 4);
 
         } else {
-            for (let i = 0; i < optimizedTeams.length; i += 2) {
-                const teamA = optimizedTeams[i];
-                const teamB = optimizedTeams[i + 1] || { team_name: '（シード）', organization: '' };
-                
+            // 🌟①【改善】決勝トーナメント生成時の配置を左右の山に交互（または均等）に分散させる
+            const halfLength = Math.ceil(optimizedTeams.length / 2);
+            const leftSideTeams = optimizedTeams.slice(0, halfLength);
+            const rightSideTeams = optimizedTeams.slice(halfLength);
+
+            // 左の山の試合カード生成
+            for (let i = 0; i < leftSideTeams.length; i += 2) {
+                const teamA = leftSideTeams[i];
+                const teamB = leftSideTeams[i + 1] || { team_name: '（シード）', organization: '' };
                 matchesToInsert.push({
                     category,
                     stage: '決勝トーナメント',
-                    title: `1回戦 第${Math.floor(i/2) + 1}試合`,
+                    title: `1回戦(左) 第${Math.floor(i/2) + 1}試合`,
                     teamA: teamA.team_name,
                     teamB: teamB.team_name,
-                    scoreA: 0,
-                    scoreB: 0,
+                    scoreA: 0, scoreB: 0,
                     status: teamB.team_name === '（シード）' ? 'finished' : 'scheduled',
-                    details: { round: 1, match_index: Math.floor(i/2) }
+                    details: { round: 1, side: 'left', match_index: Math.floor(i/2) }
+                });
+            }
+
+            // 右の山の試合カード生成
+            for (let i = 0; i < rightSideTeams.length; i += 2) {
+                const teamA = rightSideTeams[i];
+                const teamB = rightSideTeams[i + 1] || { team_name: '（シード）', organization: '' };
+                matchesToInsert.push({
+                    category,
+                    stage: '決勝トーナメント',
+                    title: `1回戦(右) 第${Math.floor(i/2) + 1}試合`,
+                    teamA: teamA.team_name,
+                    teamB: teamB.team_name,
+                    scoreA: 0, scoreB: 0,
+                    status: teamB.team_name === '（シード）' ? 'finished' : 'scheduled',
+                    details: { round: 1, side: 'right', match_index: Math.floor(i/2) }
                 });
             }
         }
@@ -418,5 +435,5 @@ app.post('/api/tournament/save_final', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Supabase接続完了！本本モードで起動中: http://localhost:${PORT}`);
+    console.log(`🚀 Supabase接続完了！本番モードで起動中: http://localhost:${PORT}`);
 });

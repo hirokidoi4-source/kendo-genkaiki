@@ -20,7 +20,8 @@
         .selected-match-card {
             border: 3px solid #4f46e5 !important;
             background-color: #eef2ff !important;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            box-shadow: 0 6px 12px -2px rgb(79 70 229 / 0.2);
+            transform: translateY(-2px);
         }
     </style>
 </head>
@@ -50,7 +51,8 @@
                 </div>
             </div>
             
-            <div id="matchCardGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-48 overflow-y-auto pr-1 no-scrollbar">
+            <!-- 🌟 UI改善：選択エリアを max-h-[500px] に拡張、一覧しやすく -->
+            <div id="matchCardGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[500px] overflow-y-auto pr-1 no-scrollbar">
                 <p class="text-xs text-gray-400 font-bold p-2 text-center col-span-3">対戦カードを読み込み中...</p>
             </div>
         </div>
@@ -167,7 +169,7 @@
         
         let loadedMatches = []; 
         let currentSelectedMatchId = null; 
-        let currentInputStage = '予選リーグ'; // 日本語表記に統一して不整合を防止
+        let currentInputStage = '予選リーグ';
 
         const resetScoreState = () => {
             state = {
@@ -177,14 +179,12 @@
             };
         };
 
-        // === 🌟 グループ化・色別カード生成 ===
         const loadMatchesFromDB = async () => {
             const filterCategory = document.getElementById('filterCategory').value;
             try {
                 const res = await fetch('/api/matches');
                 loadedMatches = await res.json();
                 
-                // 日本語表記のステージ名でフィルタリング
                 const filtered = loadedMatches.filter(m => m.category === filterCategory && m.stage === currentInputStage);
                 
                 const grid = document.getElementById('matchCardGrid');
@@ -254,51 +254,52 @@
                         
                         let statusClass = "bg-gray-100 border-gray-300 text-gray-600";
                         let statusText = "未実施";
-                        if (match.status === 'finished') {
-                            statusClass = "bg-slate-400 border-slate-400 text-white opacity-70";
-                            statusText = "試合終了";
-                        } else if (match.status === 'ongoing') {
-                            statusClass = "bg-orange-500 border-orange-500 text-white animate-pulse";
-                            statusText = "試合中 ⚔️";
-                        }
-
                         let cardColorClass = "border-gray-200 bg-white hover:border-indigo-400"; 
-                        if (currentInputStage === '決勝トーナメント') {
-                            if (sectionName === '1回戦') {
-                                cardColorClass = "border-slate-200 bg-slate-50/40 hover:border-slate-400";
-                            } else if (sectionName === '準決勝') {
-                                cardColorClass = "border-emerald-200 bg-emerald-50/20 hover:border-emerald-400";
-                            } else if (sectionName === '決勝戦') {
-                                cardColorClass = "border-red-300 bg-red-50/20 hover:border-red-500 shadow-sm";
-                            }
+
+                        // 🌟 UI改善：終了した試合を「優しい薄緑色」にして完遂感を分かりやすく表現
+                        if (match.status === 'finished') {
+                            statusClass = "bg-emerald-600 border-emerald-600 text-white font-bold";
+                            statusText = "試合終了 ✓";
+                            cardColorClass = "border-emerald-300 bg-emerald-50/50 hover:border-emerald-400";
+                        } else if (match.status === 'ongoing') {
+                            statusClass = "bg-orange-500 border-orange-500 text-white animate-pulse font-bold";
+                            statusText = "試合中 ⚔️";
+                            cardColorClass = "border-orange-300 bg-orange-50/20 hover:border-orange-400";
                         } else {
-                            const colors = [
-                                "border-indigo-100 bg-indigo-50/10 hover:border-indigo-300",
-                                "border-amber-100 bg-amber-50/10 hover:border-amber-300",
-                                "border-emerald-100 bg-emerald-50/10 hover:border-emerald-300",
-                                "border-rose-100 bg-rose-50/10 hover:border-rose-300",
-                                "border-sky-100 bg-sky-50/10 hover:border-sky-300"
-                            ];
-                            let charSum = 0;
-                            for (let idx = 0; idx < sectionName.length; idx++) charSum += sectionName.charCodeAt(idx);
-                            cardColorClass = colors[charSum % colors.length];
+                            if (currentInputStage === '決勝トーナメント') {
+                                if (sectionName === '1回戦') cardColorClass = "border-slate-200 bg-slate-50/40 hover:border-slate-400";
+                                else if (sectionName === '準決勝') cardColorClass = "border-emerald-200 bg-emerald-50/20 hover:border-emerald-400";
+                                else if (sectionName === '決勝戦') cardColorClass = "border-red-300 bg-red-50/20 hover:border-red-500 shadow-sm";
+                            } else {
+                                const colors = [
+                                    "border-indigo-100 bg-indigo-50/10 hover:border-indigo-300",
+                                    "border-amber-100 bg-amber-50/10 hover:border-amber-300",
+                                    "border-emerald-100 bg-emerald-50/10 hover:border-emerald-300",
+                                    "border-rose-100 bg-rose-50/10 hover:border-rose-300",
+                                    "border-sky-100 bg-sky-50/10 hover:border-sky-300"
+                                ];
+                                let charSum = 0;
+                                for (let idx = 0; idx < sectionName.length; idx++) charSum += sectionName.charCodeAt(idx);
+                                cardColorClass = colors[charSum % colors.length];
+                            }
                         }
 
                         const isSelected = match.id === currentSelectedMatchId;
                         const finalBorderClass = isSelected ? 'selected-match-card' : cardColorClass;
 
-                        btn.className = `border rounded-xl p-2.5 cursor-pointer transition-all ${finalBorderClass}`;
+                        // 🌟 UI改善：カードのパディングを p-2.5 → p-4 へ拡大、文字サイズも押しやすく調整
+                        btn.className = `border-2 rounded-xl p-4 cursor-pointer transition-all ${finalBorderClass}`;
                         btn.onclick = () => selectMatchCard(match.id);
                         
                         btn.innerHTML = `
-                            <div class="flex justify-between items-center mb-1">
-                                <span class="text-[10px] font-black text-slate-700">${match.title}</span>
-                                <span class="text-[9px] font-black px-1.5 rounded-full ${statusClass}">${statusText}</span>
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-xs font-black text-slate-700">${match.title}</span>
+                                <span class="text-[10px] font-black px-2 py-0.5 rounded-full ${statusClass}">${statusText}</span>
                             </div>
-                            <div class="text-xs font-bold text-gray-800 flex justify-between items-center mt-1">
-                                <span class="truncate max-w-[90px]">${match.teamA}</span>
-                                <span class="text-[10px] font-black text-slate-400 px-1 bg-gray-100 rounded">${match.status !== 'scheduled' ? `${match.scoreA}-${match.scoreB}` : 'VS'}</span>
-                                <span class="truncate max-w-[90px] text-right">${match.teamB}</span>
+                            <div class="text-sm font-bold text-gray-800 flex justify-between items-center mt-2">
+                                <span class="truncate max-w-[110px]">${match.teamA}</span>
+                                <span class="text-xs font-black text-indigo-700 px-2 py-0.5 bg-indigo-50 rounded border border-indigo-100">${match.status !== 'scheduled' ? `${match.scoreA} - ${match.scoreB}` : 'VS'}</span>
+                                <span class="truncate max-w-[110px] text-right">${match.teamB}</span>
                             </div>
                         `;
                         grid.appendChild(btn);
@@ -307,7 +308,7 @@
 
                 if (currentSelectedMatchId) {
                     const activeCard = document.getElementById(`match_card_${currentSelectedMatchId}`);
-                    if (activeCard) activeCard.classList.add('selected-match-card');
+                    if (activeCard) activeCard.className = `border-2 rounded-xl p-4 cursor-pointer transition-all selected-match-card`;
                 }
 
             } catch (err) {
@@ -317,14 +318,10 @@
 
         window.selectMatchCard = (matchId) => {
             if (currentSelectedMatchId) {
-                const prevCard = document.getElementById(`match_card_${currentSelectedMatchId}`);
-                if (prevCard) prevCard.classList.remove('selected-match-card');
+                loadMatchesFromDB(); // 全体再描画でスタイルを戻す
             }
 
             currentSelectedMatchId = matchId;
-            const card = document.getElementById(`match_card_${matchId}`);
-            if (card) card.classList.add('selected-match-card');
-
             const match = loadedMatches.find(m => m.id === matchId);
             if (match) {
                 document.getElementById('inp_category').value = match.category;
@@ -357,6 +354,10 @@
                 renderRows();
                 renderDaihyo();
                 calculateResult();
+                
+                // 選択したカード単体のスタイル調整
+                const card = document.getElementById(`match_card_${matchId}`);
+                if (card) card.className = `border-2 rounded-xl p-4 cursor-pointer transition-all selected-match-card`;
             }
         };
 
@@ -542,7 +543,6 @@
             }
         };
 
-        // ステージ切り替え処理（日本語名に完全対応）
         window.switchInputStage = (stage) => {
             currentInputStage = stage;
             const leagueBtn = document.getElementById('stageTab_league');
