@@ -14,7 +14,21 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Supabase接続設定
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+
+// 💡 デバッグ用：万が一空っぽの場合にRenderのログで検知できるようにする
+console.log("[System Check] SUPABASE_URL exists:", !!supabaseUrl);
+console.log("[System Check] SUPABASE_KEY exists:", !!supabaseKey);
+
+let supabase;
+if (supabaseUrl && supabaseKey) {
+    supabase = createClient(supabaseUrl, supabaseKey);
+} else {
+    console.error("❌ CRITICAL ERROR: Supabase環境変数が取得できませんでした。本番環境のEnvironment設定を確認してください。");
+    // プロセスがクラッシュして死ぬのを防ぐため、ダミーで初期化するか一旦保留にする
+    supabase = createClient("https://dummy-url-prevent-crash.supabase.co", "dummy-key");
+}
 
 app.use(express.json());
 app.use('/', express.static(path.join(__dirname, 'public')));
