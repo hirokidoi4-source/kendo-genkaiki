@@ -208,13 +208,6 @@
                     return;
                 }
 
-                // 🌟 試合番号順（第1試合、第2試合...）に綺麗に並び替えます
-                finalMatches.sort((a, b) => {
-                    const numA = parseInt(a.title.match(/\d+/)?.[0] || 0);
-                    const numB = parseInt(b.title.match(/\d+/)?.[0] || 0);
-                    return numA - numB;
-                });
-
                 // 外側のメインコンテナ自体の幅制限を適切に設定
                 document.getElementById('mainContent').className = "p-4 w-full max-w-3xl mx-auto pb-20";
 
@@ -222,19 +215,76 @@
                 const headerDiv = document.createElement('div');
                 headerDiv.className = "text-center font-black text-sm text-indigo-900 mb-6 border-b-2 border-dashed pb-3 flex justify-center items-center gap-1.5";
                 headerDiv.innerHTML = `
-                    <span>📊 決勝トーナメント 試合結果一覧</span>
+                    <span>📊 決勝トーナメント 進行状況一覧</span>
                     <span class="bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded-full">タップで詳細スコア表示</span>
                 `;
                 content.appendChild(headerDiv);
 
-                // 🌟 全ての決勝トーナメント試合をループで自動生成（何試合あっても下へ綺麗に追加されます）
+                // 🌟 試合を「決勝」「準決勝」「3回戦」「2回戦」「1回戦」などのグループに自動分類します
+                const stagesGroup = {
+                    '決勝': [],
+                    '準決勝': [],
+                    '4回戦': [],
+                    '3回戦': [],
+                    '2回戦': [],
+                    '1回戦': [],
+                    'その他': []
+                };
+
                 finalMatches.forEach(match => {
-                    const card = createMatchCard(match);
-                    content.appendChild(card);
+                    if (match.title.includes('決勝') && !match.title.includes('準決勝')) {
+                        stagesGroup['決勝'].push(match);
+                    } else if (match.title.includes('準決勝')) {
+                        stagesGroup['準決勝'].push(match);
+                    } else if (match.title.includes('4回戦')) {
+                        stagesGroup['4回戦'].push(match);
+                    } else if (match.title.includes('3回戦')) {
+                        stagesGroup['3回戦'].push(match);
+                    } else if (match.title.includes('2回戦')) {
+                        stagesGroup['2回戦'].push(match);
+                    } else if (match.title.includes('1回戦')) {
+                        stagesGroup['1回戦'].push(match);
+                    } else {
+                        stagesGroup['その他'].push(match);
+                    }
+                });
+
+                // 各グループ内を試合番号順にソートするための比較関数
+                const sortByMatchNum = (a, b) => {
+                    const numA = parseInt(a.title.match(/\d+/)?.[0] || 0);
+                    const numB = parseInt(b.title.match(/\d+/)?.[0] || 0);
+                    return numA - numB;
+                };
+
+                // 🌟 決勝から順に画面にグループごとの見出しを付けて並べていきます
+                const order = ['決勝', '準決勝', '4回戦', '3回戦', '2回戦', '1回戦', 'その他'];
+                
+                order.forEach(stageName => {
+                    const matches = stagesGroup[stageName];
+                    if (matches.length > 0) {
+                        matches.sort(sortByMatchNum);
+
+                        // 回戦ごとの見出しデザインを生成
+                        const sectionHeader = document.createElement('div');
+                        let badgeColor = "bg-slate-200 text-slate-800";
+                        let icon = "🛡️";
+
+                        if (stageName === '決勝') { badgeColor = "bg-amber-100 text-amber-800 border border-amber-300"; icon = "🏆"; }
+                        else if (stageName === '準決勝') { badgeColor = "bg-indigo-100 text-indigo-800"; icon = "⚔️"; }
+
+                        sectionHeader.className = `flex items-center gap-2 font-black text-base mt-8 mb-4 px-3 py-1.5 rounded-lg ${badgeColor} w-max shadow-sm`;
+                        sectionHeader.innerHTML = `<span>${icon} ${stageName}</span><span class="text-xs opacity-75">(${matches.length}試合)</span>`;
+                        content.appendChild(sectionHeader);
+
+                        // その回戦の試合カードを並べる
+                        matches.forEach(match => {
+                            const card = createMatchCard(match);
+                            content.appendChild(card);
+                        });
+                    }
                 });
             }
         };
-
         const createMatchCard = (match) => {
             const card = document.createElement('div');
             card.className = 'match-card bg-white rounded-xl shadow-md border-2 border-gray-200 mb-4 overflow-hidden cursor-pointer hover:border-indigo-400 hover:shadow-lg transition-all duration-200';
