@@ -9,24 +9,11 @@
         .match-card {
             cursor: pointer;
             transition: all 0.2s ease;
-            -webkit-tap-highlight-color: transparent; /* スマホタップ時のハイライトを最適化 */
+            -webkit-tap-highlight-color: transparent;
         }
         .match-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        .overflow-x-auto::-webkit-scrollbar {
-            height: 6px;
-        }
-        .overflow-x-auto::-webkit-scrollbar-thumb {
-            background-color: #cbd5e1;
-            border-radius: 3px;
-        }
-        /* スマホ向けモーダルの表示領域調整 */
-        .modal-body-scroll {
-            max-height: calc(85vh - 120px);
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
         }
     </style>
 </head>
@@ -43,183 +30,124 @@
             </div>
         </header>
 
-        <!-- 対戦カードリスト（サンプル） -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div class="match-card bg-white rounded-xl p-4 shadow border border-slate-200" onclick="openModal('Aリーグ 第3試合')">
-                <div class="flex justify-between items-center text-xs text-slate-500 font-bold mb-2">
-                    <span class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">予選リーグ</span>
-                    <span>Aリーグ 第3試合</span>
-                </div>
-                <div class="flex justify-between items-center text-center my-3">
-                    <div class="w-2/5">
-                        <div class="font-bold text-sm sm:text-base truncate">大野東剣道</div>
-                        <div class="text-xs text-red-600 font-semibold">赤 (▲)</div>
-                    </div>
-                    <div class="w-1/5 font-black text-lg text-slate-400">VS</div>
-                    <div class="w-2/5">
-                        <div class="font-bold text-sm sm:text-base truncate">太宰府振武会</div>
-                        <div class="text-xs text-slate-500 font-semibold">白 (○)</div>
-                    </div>
-                </div>
-                <div class="text-center">
-                    <span class="inline-block bg-slate-100 text-slate-600 text-xs px-3 py-1 rounded-full font-bold">クリック／タップしてスコア入力</span>
-                </div>
-            </div>
+        <!-- 予選リーグ・試合一覧コンテナ -->
+        <div id="matchesContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- サーバーから取得したデータがここに動的表示されます -->
+            <div class="text-center py-8 text-slate-400 font-bold col-span-full">試合データを読み込み中...</div>
         </div>
     </div>
 
-    <!-- スコア入力モーダル -->
-    <div id="scoreModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
+    <!-- 取得部位選択モーダル（3枚目の画像UI） -->
+    <div id="scoreSelectModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden p-5 space-y-4">
+            <h3 class="text-center font-black text-lg text-slate-800" id="modalTargetTitle">取得部位を選択</h3>
             
-            <!-- モーダルヘッダー -->
-            <div class="bg-indigo-900 text-white p-3 sm:p-4 flex justify-between items-center shrink-0">
-                <div>
-                    <span class="text-xs bg-indigo-700 px-2 py-0.5 rounded text-indigo-100">予選リーグ</span>
-                    <h2 id="modalTitle" class="text-base sm:text-lg font-bold">Aリーグ 第3試合</h2>
+            <!-- ▼ 先取（1本目） -->
+            <div>
+                <div class="text-xs font-bold text-amber-600 mb-2 flex items-center gap-1">
+                    <span>▼ 先取（1本目）</span>
+                    <span class="text-[10px] text-slate-400 font-normal">※試合の中で最初に取った1本</span>
                 </div>
-                <button onclick="closeModal()" class="text-slate-300 hover:text-white text-2xl font-bold px-2">&times;</button>
-            </div>
-
-            <!-- モーダルボディ（スクロールエリア） -->
-            <div class="p-3 sm:p-6 overflow-y-auto space-y-4 modal-body-scroll">
-                
-                <!-- チーム名・スコア表示 -->
-                <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 flex justify-between items-center text-center">
-                    <div class="w-5/12">
-                        <div class="font-bold text-xs sm:text-sm">大野東剣道スポーツ少年団</div>
-                        <div class="text-xs text-red-600 font-bold">赤 (▲)</div>
-                    </div>
-                    <div class="w-2/12 text-xs font-bold text-slate-400">VS</div>
-                    <div class="w-5/12">
-                        <div class="font-bold text-xs sm:text-sm">太宰府振武会</div>
-                        <div class="text-xs text-slate-500 font-bold">白 (○)</div>
-                    </div>
-                </div>
-
-                <div class="text-xs text-slate-500 text-right">
-                    💡 一本目取得時に自動で <span class="font-bold text-indigo-600">◯（初本）</span> が付きます
-                </div>
-
-                <!-- ポジション別対戦結果テーブル -->
-                <div class="overflow-x-auto -mx-2 sm:mx-0">
-                    <table class="w-full text-xs sm:text-sm text-left border-collapse min-w-[600px]">
-                        <thead>
-                            <tr class="border-b text-slate-500 bg-slate-50">
-                                <th class="p-2 w-12 text-center">位置</th>
-                                <th class="p-2 text-center">赤 (▲) 取得部位</th>
-                                <th class="p-2 w-20 text-center">勝敗</th>
-                                <th class="p-2 text-center">白 (○) 取得部位</th>
-                            </tr>
-                        </thead>
-                        <tbody id="matchRows">
-                            <!-- JSでポジション行を生成 -->
-                        </tbody>
-                    </table>
+                <div class="grid grid-cols-4 gap-2">
+                    <button onclick="selectPoint('メ◯')" class="py-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-bold rounded-xl text-base shadow-sm">メ◯</button>
+                    <button onclick="selectPoint('コ◯')" class="py-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-bold rounded-xl text-base shadow-sm">コ◯</button>
+                    <button onclick="selectPoint('ド◯')" class="py-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-bold rounded-xl text-base shadow-sm">ド◯</button>
+                    <button onclick="selectPoint('ツ◯')" class="py-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-bold rounded-xl text-base shadow-sm">ツ◯</button>
                 </div>
             </div>
 
-            <!-- モーダルフッター -->
-            <div class="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 shrink-0">
-                <button onclick="closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg text-xs sm:text-sm font-bold text-slate-700">キャンセル</button>
-                <button onclick="saveScores()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-xs sm:text-sm font-bold text-white shadow">💾 団体戦結果をコミットして反映</button>
+            <!-- ▼ 通常（2本目以降） -->
+            <div>
+                <div class="text-xs font-bold text-indigo-600 mb-2">▼ 通常（2本目以降）</div>
+                <div class="grid grid-cols-4 gap-2">
+                    <button onclick="selectPoint('メ')" class="py-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold rounded-xl text-base shadow-sm">メ</button>
+                    <button onclick="selectPoint('コ')" class="py-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold rounded-xl text-base shadow-sm">コ</button>
+                    <button onclick="selectPoint('ド')" class="py-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold rounded-xl text-base shadow-sm">ド</button>
+                    <button onclick="selectPoint('ツ')" class="py-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold rounded-xl text-base shadow-sm">ツ</button>
+                </div>
             </div>
+
+            <!-- ▼ 反則・その他 -->
+            <div>
+                <div class="text-xs font-bold text-slate-500 mb-2">▼ 反則・その他</div>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="selectPoint('▲')" class="py-3 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold rounded-xl text-sm">反則(▲)</button>
+                    <button onclick="selectPoint('引分')" class="py-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold rounded-xl text-sm">引分</button>
+                    <button onclick="selectPoint('CLEAR')" class="py-3 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-600 font-bold rounded-xl text-sm">取消</button>
+                </div>
+            </div>
+
+            <button onclick="closeScoreSelectModal()" class="w-full py-3 bg-slate-200 text-slate-700 font-bold rounded-xl mt-2">閉じる</button>
         </div>
     </div>
 
     <script>
-        const positions = ['先鋒', '次鋒', '中堅', '副将', '大将'];
-        // 各ポジションの入力状態データ
-        let matchData = positions.map(pos => ({
-            position: pos,
-            red: [],   // 例: ['メ']
-            white: [], // 例: ['コ', 'メ']
-            result: '引き分け'
-        }));
-
-        // モーダルを開く（スマホのタップ・クリック共通）
-        function openModal(title) {
-            document.getElementById('modalTitle').innerText = title;
-            document.getElementById('scoreModal').classList.remove('hidden');
-            renderRows();
-        }
-
-        function closeModal() {
-            document.getElementById('scoreModal').classList.add('hidden');
-        }
-
-        // スコアボタンを押したときの処理
-        function addScore(index, side, point) {
-            const row = matchData[index];
-            const target = side === 'red' ? row.red : row.white;
-            
-            if (point === 'CLEAR') {
-                target.length = 0;
-            } else if (target.length < 2) {
-                target.push(point);
+        // APIから対戦カード・予選リーグデータを自動読み込み
+        async function loadMatches() {
+            try {
+                const res = await fetch('/api/matches');
+                const matches = await res.json();
+                renderMatches(matches);
+            } catch (err) {
+                console.error('データ取得失敗:', err);
+                // データ取得APIが無い場合でもサンプルを表示できるようにフォールバック
+                renderMatches([
+                    { id: 1, league: '予選リーグ', title: 'Aリーグ 第3試合', redTeam: '大野東剣道', whiteTeam: '太宰府振武会' }
+                ]);
             }
-            renderRows();
         }
 
-        // 表示のレンダリング＆◯（初本）の1回のみ適用ロジック
-        function renderRows() {
-            const tbody = document.getElementById('matchRows');
-            tbody.innerHTML = '';
+        function renderMatches(matches) {
+            const container = document.getElementById('matchesContainer');
+            if (!matches || matches.length === 0) {
+                container.innerHTML = '<div class="text-center py-8 text-slate-400 font-bold col-span-full">該当する試合がありません</div>';
+                return;
+            }
 
-            matchData.forEach((row, i) => {
-                // ★【重要】試合全体（赤＋白）の中で、一番最初に記録された本数だけに◯をつけるロジック
-                let firstScored = false;
-                
-                const formattedRed = row.red.map(p => {
-                    if (!firstScored) {
-                        firstScored = true;
-                        return '◯' + p;
-                    }
-                    return p;
-                }).join('');
-
-                const formattedWhite = row.white.map(p => {
-                    if (!firstScored) {
-                        firstScored = true;
-                        return '◯' + p;
-                    }
-                    return p;
-                }).join('');
-
-                const tr = document.createElement('tr');
-                tr.className = 'border-b';
-                tr.innerHTML = `
-                    <td class="p-2 font-bold text-center bg-slate-50">${row.position}</td>
-                    <td class="p-2">
-                        <div class="flex items-center gap-1 mb-1">
-                            ${['メ', 'コ', 'ド', 'ツ', '反'].map(pt => `
-                                <button onclick="addScore(${i}, 'red', '${pt}')" class="px-2 py-1 bg-slate-100 hover:bg-red-100 text-slate-700 font-bold rounded text-xs">${pt}</button>
-                            `).join('')}
-                            <button onclick="addScore(${i}, 'red', 'CLEAR')" class="px-1.5 py-1 text-slate-400 hover:text-red-500 text-xs">✕</button>
+            container.innerHTML = matches.map(m => `
+                <div class="match-card bg-white rounded-xl p-4 shadow border border-slate-200" onclick="openScoreSelectModal('${m.title}')">
+                    <div class="flex justify-between items-center text-xs text-slate-500 font-bold mb-2">
+                        <span class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">${m.league || '予選リーグ'}</span>
+                        <span>${m.title}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-center my-3">
+                        <div class="w-2/5">
+                            <div class="font-bold text-sm sm:text-base truncate">${m.redTeam}</div>
+                            <div class="text-xs text-red-600 font-semibold">赤 (▲)</div>
                         </div>
-                        <div class="font-bold text-red-600 h-5 text-sm">${formattedRed || '-'}</div>
-                    </td>
-                    <td class="p-2 text-center">
-                        <span class="text-xs px-2 py-1 bg-amber-50 text-amber-700 font-bold rounded border border-amber-200">引分</span>
-                    </td>
-                    <td class="p-2">
-                        <div class="flex items-center gap-1 mb-1">
-                            <button onclick="addScore(${i}, 'white', 'CLEAR')" class="px-1.5 py-1 text-slate-400 hover:text-red-500 text-xs">✕</button>
-                            ${['メ', 'コ', 'ド', 'ツ', '反'].map(pt => `
-                                <button onclick="addScore(${i}, 'white', '${pt}')" class="px-2 py-1 bg-slate-100 hover:bg-blue-100 text-slate-700 font-bold rounded text-xs">${pt}</button>
-                            `).join('')}
+                        <div class="w-1/5 font-black text-lg text-slate-400">VS</div>
+                        <div class="w-2/5">
+                            <div class="font-bold text-sm sm:text-base truncate">${m.whiteTeam}</div>
+                            <div class="text-xs text-slate-500 font-semibold">白 (○)</div>
                         </div>
-                        <div class="font-bold text-slate-700 h-5 text-sm">${formattedWhite || '-'}</div>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
+                    </div>
+                    <div class="text-center">
+                        <span class="inline-block bg-indigo-50 text-indigo-600 text-xs px-3 py-1 rounded-full font-bold">タップしてスコア入力</span>
+                    </div>
+                </div>
+            `).join('');
         }
 
-        function saveScores() {
-            alert('スコアを反映しました');
-            closeModal();
+        // モーダル表示制御
+        let currentEditingTarget = null;
+
+        function openScoreSelectModal(title) {
+            document.getElementById('modalTargetTitle').innerText = title + ' - 取得部位を選択';
+            document.getElementById('scoreSelectModal').classList.remove('hidden');
         }
+
+        function closeScoreSelectModal() {
+            document.getElementById('scoreSelectModal').classList.add('hidden');
+        }
+
+        function selectPoint(point) {
+            console.log('選択された技/判定:', point);
+            // 選択処理後に閉じる
+            closeScoreSelectModal();
+        }
+
+        // 初回データ読み込み実行
+        loadMatches();
     </script>
 </body>
 </html>
