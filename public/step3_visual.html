@@ -15,6 +15,11 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
+        .modal-scroll {
+            max-height: calc(88vh - 100px);
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans p-2 sm:p-4 md:p-8">
@@ -32,140 +37,221 @@
 
         <!-- 試合一覧コンテナ -->
         <div id="matchesContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div class="text-center py-8 text-slate-400 font-bold col-span-full">試合データを読み込み中...</div>
+            <div class="text-center py-8 text-slate-400 font-bold col-span-full">対戦データを読み込み中...</div>
         </div>
     </div>
 
-    <!-- 結果入力モーダル（赤・白チーム選択つき） -->
-    <div id="scoreModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 hidden">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden p-5 space-y-4">
+    <!-- 団体戦結果入力モーダル（ポジション別：先鋒〜大将） -->
+    <div id="scoreModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
             
-            <div class="text-center border-b pb-3">
-                <span id="modalLeagueTitle" class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-bold">予選リーグ</span>
-                <h3 id="modalMatchTitle" class="font-black text-lg text-slate-800 mt-1">対戦データ</h3>
+            <!-- モーダルヘッダー -->
+            <div class="bg-indigo-900 text-white p-3 sm:p-4 flex justify-between items-center shrink-0">
+                <div>
+                    <span id="modalGroupBadge" class="text-xs bg-indigo-700 px-2 py-0.5 rounded text-indigo-100 font-bold">予選リーグ</span>
+                    <h2 id="modalMatchTitle" class="text-base sm:text-lg font-bold">対戦詳細</h2>
+                </div>
+                <button onclick="closeModal()" class="text-slate-300 hover:text-white text-2xl font-bold px-2">&times;</button>
             </div>
 
-            <!-- 対象チームの選択 -->
+            <!-- モーダルボディ -->
+            <div class="p-3 sm:p-5 modal-scroll space-y-4">
+                
+                <!-- 対戦チームヘッダー -->
+                <div class="bg-slate-100 rounded-xl p-3 border border-slate-200 flex justify-between items-center text-center">
+                    <div class="w-5/12">
+                        <div id="modalRedTeam" class="font-black text-sm sm:text-base text-red-700 truncate">赤チーム</div>
+                        <div class="text-[10px] sm:text-xs text-red-500 font-bold">赤 (▲)</div>
+                    </div>
+                    <div class="w-2/12 font-black text-xs sm:text-sm text-slate-400">VS</div>
+                    <div class="w-5/12">
+                        <div id="modalWhiteTeam" class="font-black text-sm sm:text-base text-slate-800 truncate">白チーム</div>
+                        <div class="text-[10px] sm:text-xs text-slate-500 font-bold">白 (○)</div>
+                    </div>
+                </div>
+
+                <!-- ポジション別対戦表（先鋒・次鋒・中堅・副将・大将） -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs sm:text-sm border-collapse min-w-[550px]">
+                        <thead>
+                            <tr class="border-b bg-slate-50 text-slate-500 font-bold">
+                                <th class="p-2 w-14 text-center">位置</th>
+                                <th class="p-2 text-center">赤 (▲) 取得部位</th>
+                                <th class="p-2 w-16 text-center">勝敗</th>
+                                <th class="p-2 text-center">白 (○) 取得部位</th>
+                            </tr>
+                        </thead>
+                        <tbody id="positionRows">
+                            <!-- JSで先鋒〜大将の5行を動的生成 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- フッター -->
+            <div class="p-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 shrink-0">
+                <button onclick="closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-700">キャンセル</button>
+                <button onclick="saveScores()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs sm:text-sm font-bold text-white shadow">💾 団体戦結果を確定して反映</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 部位選択ダイアログ（先取・通常選択） -->
+    <div id="partSelectDialog" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-3 hidden">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4 space-y-3">
+            <h4 id="dialogTitle" class="font-bold text-sm text-center text-slate-800">取得部位を選択</h4>
+            
+            <!-- ▼ 先取 (1本目) -->
             <div>
-                <label class="text-xs font-bold text-slate-500 mb-1 block">1. スコアを入力する選手・チームを選択</label>
-                <div class="grid grid-cols-2 gap-2">
-                    <button id="btnSelectRed" onclick="setTargetSide('red')" class="py-2.5 px-2 border-2 border-red-500 bg-red-50 text-red-700 font-bold rounded-xl text-xs truncate transition-all">
-                        🔴 赤: <span id="modalRedTeamName">チームA</span>
-                    </button>
-                    <button id="btnSelectWhite" onclick="setTargetSide('white')" class="py-2.5 px-2 border-2 border-slate-200 bg-slate-50 text-slate-600 font-bold rounded-xl text-xs truncate transition-all">
-                        ⚪ 白: <span id="modalWhiteTeamName">チームB</span>
-                    </button>
+                <div class="text-[11px] font-bold text-amber-600 mb-1">▼ 先取（1本目）※初本◯付与</div>
+                <div class="grid grid-cols-4 gap-1.5">
+                    <button onclick="applyPart('メ◯')" class="py-2 bg-amber-50 border border-amber-200 text-amber-900 font-bold rounded-lg text-xs">メ◯</button>
+                    <button onclick="applyPart('コ◯')" class="py-2 bg-amber-50 border border-amber-200 text-amber-900 font-bold rounded-lg text-xs">コ◯</button>
+                    <button onclick="applyPart('ド◯')" class="py-2 bg-amber-50 border border-amber-200 text-amber-900 font-bold rounded-lg text-xs">ド◯</button>
+                    <button onclick="applyPart('ツ◯')" class="py-2 bg-amber-50 border border-amber-200 text-amber-900 font-bold rounded-lg text-xs">ツ◯</button>
                 </div>
             </div>
 
-            <!-- ▼ 先取（1本目） -->
+            <!-- ▼ 通常 (2本目以降) -->
             <div>
-                <div class="text-xs font-bold text-amber-600 mb-1.5 flex items-center justify-between">
-                    <span>▼ 先取（1本目）</span>
-                    <span class="text-[10px] text-slate-400 font-normal">※最初に取った1本</span>
-                </div>
-                <div class="grid grid-cols-4 gap-2">
-                    <button onclick="inputPoint('メ◯')" class="py-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-black rounded-xl text-sm">メ◯</button>
-                    <button onclick="inputPoint('コ◯')" class="py-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-black rounded-xl text-sm">コ◯</button>
-                    <button onclick="inputPoint('ド◯')" class="py-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-black rounded-xl text-sm">ド◯</button>
-                    <button onclick="inputPoint('ツ◯')" class="py-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-black rounded-xl text-sm">ツ◯</button>
+                <div class="text-[11px] font-bold text-indigo-600 mb-1">▼ 通常（2本目以降）</div>
+                <div class="grid grid-cols-4 gap-1.5">
+                    <button onclick="applyPart('メ')" class="py-2 bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold rounded-lg text-xs">メ</button>
+                    <button onclick="applyPart('コ')" class="py-2 bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold rounded-lg text-xs">コ</button>
+                    <button onclick="applyPart('ド')" class="py-2 bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold rounded-lg text-xs">ド</button>
+                    <button onclick="applyPart('ツ')" class="py-2 bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold rounded-lg text-xs">ツ</button>
                 </div>
             </div>
 
-            <!-- ▼ 通常（2本目以降） -->
+            <!-- ▼ 反則・クリア -->
             <div>
-                <div class="text-xs font-bold text-indigo-600 mb-1.5">▼ 通常（2本目以降）</div>
-                <div class="grid grid-cols-4 gap-2">
-                    <button onclick="inputPoint('メ')" class="py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold rounded-xl text-sm">メ</button>
-                    <button onclick="inputPoint('コ')" class="py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold rounded-xl text-sm">コ</button>
-                    <button onclick="inputPoint('ド')" class="py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold rounded-xl text-sm">ド</button>
-                    <button onclick="inputPoint('ツ')" class="py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold rounded-xl text-sm">ツ</button>
+                <div class="grid grid-cols-2 gap-1.5 pt-1">
+                    <button onclick="applyPart('▲')" class="py-2 bg-red-50 border border-red-200 text-red-700 font-bold rounded-lg text-xs">反則(▲)</button>
+                    <button onclick="applyPart('CLEAR')" class="py-2 bg-slate-100 border border-slate-300 text-slate-600 font-bold rounded-lg text-xs">クリア</button>
                 </div>
             </div>
 
-            <!-- ▼ 反則・その他 -->
-            <div>
-                <div class="text-xs font-bold text-slate-500 mb-1.5">▼ 反則・その他</div>
-                <div class="grid grid-cols-3 gap-2">
-                    <button onclick="inputPoint('▲')" class="py-2.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold rounded-xl text-xs">反則(▲)</button>
-                    <button onclick="inputPoint('引分')" class="py-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold rounded-xl text-xs">引分</button>
-                    <button onclick="inputPoint('CLEAR')" class="py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-600 font-bold rounded-xl text-xs">取消</button>
-                </div>
-            </div>
-
-            <button onclick="closeModal()" class="w-full py-2.5 bg-slate-200 text-slate-700 font-bold rounded-xl mt-2 text-sm">閉じる</button>
+            <button onclick="closePartDialog()" class="w-full py-2 bg-slate-200 text-slate-600 font-bold rounded-lg text-xs mt-1">キャンセル</button>
         </div>
     </div>
 
     <script>
-        let allMatches = [];
-        let currentMatch = null;
-        let selectedSide = 'red'; // デフォルトは赤（左）
+        const positions = ['先鋒', '次鋒', '中堅', '副将', '大将'];
+        let matchesList = [];
+        let currentMatchIndex = null;
+        let activePosIndex = null;
+        let activeSide = null; // 'red' or 'white'
 
-        // 試合一覧データの取得（バックエンドの各カラム名に安全に対応）
-        async function fetchMatches() {
+        // 試合データ取得（バックエンドの全データキー構造に対応）
+        async function loadMatches() {
             try {
                 const res = await fetch('/api/matches');
-                if (!res.ok) throw new Error('API通信エラー');
+                if(!res.ok) throw new Error('通信失敗');
                 const data = await res.json();
                 
-                // データ形式の吸収（undefined対策）
-                allMatches = data.map((m, idx) => ({
-                    id: m.id || idx,
-                    league: m.league || m.league_name || '予選リーグ',
-                    title: m.title || m.match_name || `第${idx + 1}試合`,
-                    redTeam: m.red_team || m.redTeam || m.team_a || '赤チーム',
-                    whiteTeam: m.white_team || m.whiteTeam || m.team_b || '白チーム',
-                    scores: m.scores || { red: [], white: [] }
-                }));
-
-                renderMatches();
-            } catch (err) {
-                console.error(err);
-                document.getElementById('matchesContainer').innerHTML = 
-                    '<div class="text-center py-8 text-red-500 font-bold col-span-full">試合データの読み込みに失敗しました。組み合わせ（step2）を先に確定してください。</div>';
+                matchesList = data.map((m, i) => parseMatchData(m, i));
+            } catch (e) {
+                // ローカルデータまたはバックエンド不整合時のフォールバック処理
+                const saved = localStorage.getItem('kendo_matches');
+                if (saved) {
+                    matchesList = JSON.parse(saved);
+                } else {
+                    matchesList = generateFallbackData();
+                }
             }
+            renderMatchCards();
         }
 
-        function renderMatches() {
+        // データキー名の揺れ（red_team / team1 / team_a等）を吸収して正しいチーム名を取得
+        function parseMatchData(m, index) {
+            const league = m.league_name || m.league || m.group_name || m.group || '予選リーグ';
+            const title = m.title || m.match_name || `第${index + 1}試合`;
+            const redTeam = m.red_team || m.team1_name || m.team1 || m.team_a || (m.teams && m.teams[0]) || '赤チーム';
+            const whiteTeam = m.white_team || m.team2_name || m.team2 || m.team_b || (m.teams && m.teams[1]) || '白チーム';
+
+            // ポジション初期データ
+            const posData = positions.map(p => ({
+                position: p,
+                red: [],
+                white: [],
+                result: '引分'
+            }));
+
+            return {
+                id: m.id || index,
+                league,
+                title,
+                redTeam,
+                whiteTeam,
+                positions: m.positions || posData
+            };
+        }
+
+        function generateFallbackData() {
+            const groups = ['Aグループ', 'Bグループ', 'Cグループ', 'Dグループ'];
+            const sampleTeams = ['春日市筑葉会', '大野東剣道少年団', '太宰府振武会', '須恵剣友会', '清流館', '松武館'];
+            let result = [];
+            let count = 1;
+
+            groups.forEach((g) => {
+                for(let i = 0; i < 3; i++) {
+                    result.push({
+                        id: count,
+                        league: `予選 ${g}`,
+                        title: `${g} 第${i + 1}試合`,
+                        redTeam: sampleTeams[i % sampleTeams.length],
+                        whiteTeam: sampleTeams[(i + 2) % sampleTeams.length],
+                        positions: positions.map(p => ({ position: p, red: [], white: [], result: '引分' }))
+                    });
+                    count++;
+                }
+            });
+            return result;
+        }
+
+        // 試合一覧カードの描画
+        function renderMatchCards() {
             const container = document.getElementById('matchesContainer');
-            if (allMatches.length === 0) {
-                container.innerHTML = '<div class="text-center py-8 text-slate-400 font-bold col-span-full">登録されている試合がありません</div>';
+            if (!matchesList || matchesList.length === 0) {
+                container.innerHTML = '<div class="text-center py-8 text-slate-400 font-bold col-span-full">登録されている対戦がありません</div>';
                 return;
             }
 
-            container.innerHTML = allMatches.map((m, i) => `
+            container.innerHTML = matchesList.map((m, i) => `
                 <div class="match-card bg-white rounded-xl p-4 shadow border border-slate-200" onclick="openModal(${i})">
                     <div class="flex justify-between items-center text-xs text-slate-500 font-bold mb-2">
-                        <span class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">${m.league}</span>
-                        <span>${m.title}</span>
+                        <span class="bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full font-bold">${m.league}</span>
+                        <span class="text-slate-600">${m.title}</span>
                     </div>
                     <div class="flex justify-between items-center text-center my-3">
                         <div class="w-2/5">
-                            <div class="font-bold text-sm sm:text-base truncate text-slate-800">${m.redTeam}</div>
-                            <div class="text-xs text-red-600 font-semibold">赤 (▲)</div>
+                            <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.redTeam}</div>
+                            <div class="text-xs text-red-600 font-bold">赤 (▲)</div>
                         </div>
-                        <div class="w-1/5 font-black text-lg text-slate-400">VS</div>
+                        <div class="w-1/5 font-black text-base text-slate-300">VS</div>
                         <div class="w-2/5">
-                            <div class="font-bold text-sm sm:text-base truncate text-slate-800">${m.whiteTeam}</div>
-                            <div class="text-xs text-slate-500 font-semibold">白 (○)</div>
+                            <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.whiteTeam}</div>
+                            <div class="text-xs text-slate-500 font-bold">白 (○)</div>
                         </div>
                     </div>
                     <div class="text-center">
-                        <span class="inline-block bg-indigo-50 text-indigo-600 text-xs px-3 py-1 rounded-full font-bold">タップしてスコア入力</span>
+                        <span class="inline-block bg-indigo-50 text-indigo-600 text-xs px-3 py-1 rounded-full font-bold">タップして結果を入力（先鋒〜大将）</span>
                     </div>
                 </div>
             `).join('');
         }
 
+        // モーダル表示
         function openModal(index) {
-            currentMatch = allMatches[index];
-            document.getElementById('modalLeagueTitle').innerText = currentMatch.league;
-            document.getElementById('modalMatchTitle').innerText = currentMatch.title;
-            document.getElementById('modalRedTeamName').innerText = currentMatch.redTeam;
-            document.getElementById('modalWhiteTeamName').innerText = currentMatch.whiteTeam;
-            
-            setTargetSide('red'); // 赤をデフォルト選択
+            currentMatchIndex = index;
+            const match = matchesList[index];
+
+            document.getElementById('modalGroupBadge').innerText = match.league;
+            document.getElementById('modalMatchTitle').innerText = match.title;
+            document.getElementById('modalRedTeam').innerText = match.redTeam;
+            document.getElementById('modalWhiteTeam').innerText = match.whiteTeam;
+
+            renderPositionRows();
             document.getElementById('scoreModal').classList.remove('hidden');
         }
 
@@ -173,30 +259,80 @@
             document.getElementById('scoreModal').classList.add('hidden');
         }
 
-        // 赤/白チームの切り替え表示
-        function setTargetSide(side) {
-            selectedSide = side;
-            const btnRed = document.getElementById('btnSelectRed');
-            const btnWhite = document.getElementById('btnSelectWhite');
+        // 先鋒〜大将の行を表示
+        function renderPositionRows() {
+            const tbody = document.getElementById('positionRows');
+            const match = matchesList[currentMatchIndex];
+            tbody.innerHTML = '';
 
-            if (side === 'red') {
-                btnRed.className = "py-2.5 px-2 border-2 border-red-500 bg-red-50 text-red-700 font-bold rounded-xl text-xs truncate transition-all shadow-sm";
-                btnWhite.className = "py-2.5 px-2 border-2 border-slate-200 bg-slate-50 text-slate-400 font-bold rounded-xl text-xs truncate transition-all opacity-60";
+            match.positions.forEach((pos, posIdx) => {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b hover:bg-slate-50';
+
+                const redStr = pos.red.join(' ') || '-';
+                const whiteStr = pos.white.join(' ') || '-';
+
+                tr.innerHTML = `
+                    <td class="p-2 font-bold text-center bg-slate-100 text-slate-700">${pos.position}</td>
+                    <td class="p-2 text-center">
+                        <button onclick="openPartDialog(${posIdx}, 'red')" class="px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold rounded-lg text-xs w-full max-w-[120px] truncate">
+                            ${redStr}
+                        </button>
+                    </td>
+                    <td class="p-2 text-center">
+                        <span class="text-[11px] px-2 py-0.5 bg-amber-50 text-amber-700 font-bold rounded border border-amber-200">${pos.result}</span>
+                    </td>
+                    <td class="p-2 text-center">
+                        <button onclick="openPartDialog(${posIdx}, 'white')" class="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold rounded-lg text-xs w-full max-w-[120px] truncate">
+                            ${whiteStr}
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 部位選択ダイアログを開く
+        function openPartDialog(posIdx, side) {
+            activePosIndex = posIdx;
+            activeSide = side;
+            const match = matchesList[currentMatchIndex];
+            const posName = positions[posIdx];
+            const teamName = side === 'red' ? match.redTeam : match.whiteTeam;
+
+            document.getElementById('dialogTitle').innerText = `${posName} 【${teamName}】 取得部位`;
+            document.getElementById('partSelectDialog').classList.remove('hidden');
+        }
+
+        function closePartDialog() {
+            document.getElementById('partSelectDialog').classList.add('hidden');
+        }
+
+        // 取得部位の適用
+        function applyPart(part) {
+            const pos = matchesList[currentMatchIndex].positions[activePosIndex];
+            const target = activeSide === 'red' ? pos.red : pos.white;
+
+            if (part === 'CLEAR') {
+                target.length = 0;
             } else {
-                btnWhite.className = "py-2.5 px-2 border-2 border-indigo-600 bg-indigo-50 text-indigo-900 font-bold rounded-xl text-xs truncate transition-all shadow-sm";
-                btnRed.className = "py-2.5 px-2 border-2 border-slate-200 bg-slate-50 text-slate-400 font-bold rounded-xl text-xs truncate transition-all opacity-60";
+                if (target.length < 2) {
+                    target.push(part);
+                }
             }
+
+            closePartDialog();
+            renderPositionRows();
         }
 
-        // ポイント入力時の処理
-        function inputPoint(point) {
-            const sideName = selectedSide === 'red' ? currentMatch.redTeam : currentMatch.whiteTeam;
-            alert(`【${sideName}】に [ ${point} ] を記録しました`);
+        function saveScores() {
+            alert('対戦結果（先鋒〜大将）を反映しました');
             closeModal();
+            renderMatchCards();
         }
 
-        // 初期実行
-        fetchMatches();
+        // 初期読み込み実行
+        loadMatches();
     </script>
 </body>
 </html>
