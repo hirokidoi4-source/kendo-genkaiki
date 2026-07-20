@@ -16,8 +16,8 @@
             box-shadow: 0 6px 16px rgba(0,0,0,0.1);
         }
         .match-card-finished {
-            background-color: #f8fafc;
-            border-color: #cbd5e1;
+            background-color: #f1f5f9 !important;
+            border-color: #cbd5e1 !important;
         }
         .modal-scroll {
             max-height: calc(88vh - 120px);
@@ -39,7 +39,7 @@
             </div>
             <div class="flex gap-2 text-xs font-bold text-slate-500">
                 <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-white border border-slate-300 inline-block"></span> 未実施</span>
-                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-slate-200 border border-slate-400 inline-block"></span> 試合終了</span>
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-slate-300 border border-slate-400 inline-block"></span> 試合終了</span>
             </div>
         </header>
 
@@ -107,7 +107,7 @@
         </div>
     </div>
 
-    <!-- 部位選択ダイアログ（引分ボタン追加） -->
+    <!-- 部位選択ダイアログ -->
     <div id="partSelectDialog" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-3 hidden">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4 space-y-3">
             <h4 id="dialogTitle" class="font-bold text-sm text-center text-slate-800">取得部位を選択</h4>
@@ -134,7 +134,7 @@
                 </div>
             </div>
 
-            <!-- ▼ 反則・引分・クリア -->
+            <!-- ▼ その他 -->
             <div>
                 <div class="text-[11px] font-bold text-slate-600 mb-1">▼ その他</div>
                 <div class="grid grid-cols-3 gap-1.5">
@@ -155,6 +155,18 @@
         let activePosIndex = null;
         let activeSide = null;
 
+        // ★可変リーグ対応のスタイリッシュなテーマカラー配列（カード背景・バッジ・アクセント）
+        const colorThemes = [
+            { headerBg: 'bg-indigo-600', badge: 'bg-indigo-100 text-indigo-800 border-indigo-300', cardBg: 'bg-indigo-50/40 border-indigo-200' },
+            { headerBg: 'bg-emerald-600', badge: 'bg-emerald-100 text-emerald-800 border-emerald-300', cardBg: 'bg-emerald-50/40 border-emerald-200' },
+            { headerBg: 'bg-amber-600', badge: 'bg-amber-100 text-amber-800 border-amber-300', cardBg: 'bg-amber-50/40 border-amber-200' },
+            { headerBg: 'bg-rose-600', badge: 'bg-rose-100 text-rose-800 border-rose-300', cardBg: 'bg-rose-50/40 border-rose-200' },
+            { headerBg: 'bg-sky-600', badge: 'bg-sky-100 text-sky-800 border-sky-300', cardBg: 'bg-sky-50/40 border-sky-200' },
+            { headerBg: 'bg-purple-600', badge: 'bg-purple-100 text-purple-800 border-purple-300', cardBg: 'bg-purple-50/40 border-purple-200' },
+            { headerBg: 'bg-teal-600', badge: 'bg-teal-100 text-teal-800 border-teal-300', cardBg: 'bg-teal-50/40 border-teal-200' },
+            { headerBg: 'bg-orange-600', badge: 'bg-orange-100 text-orange-800 border-orange-300', cardBg: 'bg-orange-50/40 border-orange-200' }
+        ];
+
         // 試合データ取得
         async function loadMatches() {
             try {
@@ -173,10 +185,20 @@
             renderMatchGroups();
         }
 
+        // データの解析＆リーグ名・タイトル抽出の最適化
         function parseMatchData(m, index) {
-            const league = m.stage || m.league_name || m.league || m.group_name || m.group || 'Aリーグ';
-            const title = m.title || m.match_name || `第${index + 1}試合`;
+            let league = m.league || m.league_name || m.stage || m.group_name || m.group || '予選 Aリーグ';
+            let title = m.title || m.match_name || `第${index + 1}試合`;
             
+            // 例: "Hリーグ 第3試合" などの表記から純粋なリーグ名を安全に抽出
+            if (m.title && (m.title.includes('リーグ') || m.title.includes('回戦') || m.title.includes('トーナメント'))) {
+                const parts = m.title.split(' ');
+                if (parts.length > 1) {
+                    league = parts[0];
+                    title = parts.slice(1).join(' ');
+                }
+            }
+
             const redTeam = m.teamA || m.team_a || m.team1 || m.team1_name || m.red_team || m.redTeam || (m.teams && m.teams[0]) || '赤チーム';
             const whiteTeam = m.teamB || m.team_b || m.team2 || m.team2_name || m.white_team || m.whiteTeam || (m.teams && m.teams[1]) || '白チーム';
 
@@ -199,7 +221,7 @@
         }
 
         function generateFallbackData() {
-            const groups = ['Aリーグ', 'Bリーグ', 'Cリーグ', 'Dリーグ', 'Eリーグ', 'Fリーグ'];
+            const groups = ['Aリーグ', 'Bリーグ', 'Cリーグ', 'Dリーグ', 'Eリーグ', '決勝トーナメント'];
             const sampleTeams = ['春日市筑葉会', '大野東剣道', '太宰府振武会', '須恵剣友会', '清流館', '松武館'];
             let result = [];
             let count = 1;
@@ -221,7 +243,7 @@
             return result;
         }
 
-        // ★予選リーグごとに順序（A→B→C...）を正しく整列してグループ表示
+        // ★グループ分離＆色分け＆決勝トーナメント非表示ロジック
         function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
@@ -229,41 +251,109 @@
                 return;
             }
 
-            // リーグ（グループ）名で昇順ソート（Aリーグ, Bリーグ...）
-            const grouped = {};
+            // 1. 予選とトーナメントを明確に分類
+            const qualGrouped = {};
+            const tourneyMatches = [];
+
             matchesList.forEach((m, originalIndex) => {
                 m._originalIndex = originalIndex;
-                if (!grouped[m.league]) grouped[m.league] = [];
-                grouped[m.league].push(m);
+                const leagueStr = String(m.league);
+                const titleStr = String(m.title);
+
+                // トーナメント系キーワードの厳密判定
+                const isTourney = leagueStr.includes('トーナメント') || leagueStr.includes('回戦') || 
+                                 titleStr.includes('トーナメント') || titleStr.includes('回戦');
+
+                if (isTourney) {
+                    tourneyMatches.push(m);
+                } else {
+                    if (!qualGrouped[m.league]) qualGrouped[m.league] = [];
+                    qualGrouped[m.league].push(m);
+                }
             });
 
-            const sortedLeagues = Object.keys(grouped).sort((a, b) => a.localeCompare(b, 'ja'));
+            // 予選リーグ名を A -> Z 順に昇順ソート
+            const qualLeagues = Object.keys(qualGrouped).sort((a, b) => a.localeCompare(b, 'ja'));
 
-            container.innerHTML = sortedLeagues.map(leagueName => {
-                const matches = grouped[leagueName];
-                
-                return `
+            // ★予選全試合が完了しているか判定
+            let allQualFinished = true;
+            let totalQualMatches = 0;
+            let finishedQualMatches = 0;
+
+            qualLeagues.forEach(l => {
+                qualGrouped[l].forEach(m => {
+                    totalQualMatches++;
+                    const summary = calculateTeamSummary(m.positions);
+                    if (m.isFinished || (summary.hasInput && summary.status !== '未実施')) {
+                        finishedQualMatches++;
+                    } else {
+                        allQualFinished = false;
+                    }
+                });
+            });
+
+            let htmlContent = '';
+
+            // ① 予選リーグの描画（色分けカード）
+            qualLeagues.forEach((leagueName, idx) => {
+                const matches = qualGrouped[leagueName];
+                const theme = colorThemes[idx % colorThemes.length]; // リーグ毎のカラー決定
+
+                htmlContent += `
                     <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
-                        <div class="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
-                            <span class="w-3 h-6 bg-indigo-600 rounded-full inline-block"></span>
-                            <h3 class="text-lg font-black text-slate-900">${leagueName}</h3>
-                            <span class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">${matches.length}試合</span>
+                        <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                            <div class="flex items-center gap-2">
+                                <span class="w-3.5 h-6 ${theme.headerBg} rounded-full inline-block"></span>
+                                <h3 class="text-lg sm:text-xl font-black text-slate-900">${leagueName}</h3>
+                            </div>
+                            <span class="text-xs font-bold ${theme.badge} px-3 py-1 rounded-full border">${matches.length}試合</span>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            ${matches.map(m => renderMatchCardHtml(m)).join('')}
+                            ${matches.map(m => renderMatchCardHtml(m, theme)).join('')}
                         </div>
                     </div>
                 `;
-            }).join('');
+            });
+
+            // ② 決勝トーナメント（予選全終了まで完全に隠す）
+            if (tourneyMatches.length > 0) {
+                if (allQualFinished && totalQualMatches > 0) {
+                    // 予選全完了時のみ表示！
+                    htmlContent += `
+                        <div class="bg-amber-50/80 rounded-2xl p-4 sm:p-5 shadow-md border-2 border-amber-300">
+                            <div class="flex items-center gap-2 mb-4 border-b border-amber-200 pb-3">
+                                <span class="w-3.5 h-6 bg-amber-600 rounded-full inline-block"></span>
+                                <h3 class="text-lg sm:text-xl font-black text-amber-950 flex items-center gap-2">
+                                    🏆 決勝トーナメント <span class="text-xs bg-amber-200 text-amber-900 font-bold px-2.5 py-0.5 rounded-full">予選通過チーム</span>
+                                </h3>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                ${tourneyMatches.map(m => renderMatchCardHtml(m, { headerBg: 'bg-amber-600', badge: 'bg-amber-100 text-amber-800 border-amber-300', cardBg: 'bg-amber-100/50 border-amber-200' })).join('')}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // 予選未終了時のロック案内カード
+                    htmlContent += `
+                        <div class="bg-slate-200/60 border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center space-y-2">
+                            <div class="text-3xl">🔒</div>
+                            <h3 class="text-base font-black text-slate-700">決勝トーナメント（予選全試合終了後に自動公開）</h3>
+                            <p class="text-xs font-bold text-slate-500">予選リーグの進行状況: ${finishedQualMatches} / ${totalQualMatches} 試合完了</p>
+                        </div>
+                    `;
+                }
+            }
+
+            container.innerHTML = htmlContent;
         }
 
-        // 単一試合カードHTMLの生成（入力済み・未入力で見た目を明確に変更）
-        function renderMatchCardHtml(m) {
+        // 単一試合カードHTMLの生成
+        function renderMatchCardHtml(m, theme) {
             const summary = calculateTeamSummary(m.positions);
             const isFinished = m.isFinished || (summary.status !== '未実施' && summary.hasInput);
 
-            let cardStyle = "bg-white border-slate-200 hover:border-indigo-300";
-            let statusBadge = `<span class="inline-block bg-indigo-50 text-indigo-600 text-xs px-3 py-1 rounded-full font-bold">タップして結果入力</span>`;
+            let cardStyle = `${theme.cardBg}`;
+            let statusBadge = `<span class="inline-block bg-white border border-slate-200 text-slate-600 text-xs px-3 py-1 rounded-full font-bold shadow-xs">タップして結果入力</span>`;
             let winnerText = "";
 
             if (isFinished) {
@@ -283,7 +373,7 @@
             return `
                 <div class="match-card rounded-xl p-4 shadow-sm border ${cardStyle}" onclick="openModal(${m._originalIndex})">
                     <div class="flex justify-between items-center text-xs text-slate-500 font-bold mb-2">
-                        <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-bold">${m.league}</span>
+                        <span class="px-2.5 py-0.5 rounded font-bold ${theme.badge}">${m.league}</span>
                         <span class="text-slate-600">${m.title}</span>
                     </div>
                     <div class="flex justify-between items-center text-center my-3">
@@ -454,12 +544,10 @@
             if (part === 'CLEAR') {
                 target.length = 0;
             } else if (part === '引分') {
-                // 明示的に引分を入力
                 target.length = 0;
                 target.push('引分');
             } else {
                 if (target.length < 4) {
-                    // 引分指定が入っていたら除去
                     const idx = target.indexOf('引分');
                     if (idx !== -1) target.splice(idx, 1);
                     target.push(part);
