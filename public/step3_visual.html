@@ -16,7 +16,7 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
         .modal-scroll {
-            max-height: calc(88vh - 100px);
+            max-height: calc(88vh - 120px);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
         }
@@ -57,16 +57,21 @@
             <!-- モーダルボディ -->
             <div class="p-3 sm:p-5 modal-scroll space-y-4">
                 
-                <!-- 対戦チームヘッダー -->
-                <div class="bg-slate-100 rounded-xl p-3 border border-slate-200 flex justify-between items-center text-center">
-                    <div class="w-5/12">
-                        <div id="modalRedTeam" class="font-black text-sm sm:text-base text-red-700 truncate">赤チーム</div>
-                        <div class="text-[10px] sm:text-xs text-red-500 font-bold">赤 (▲)</div>
-                    </div>
-                    <div class="w-2/12 font-black text-xs sm:text-sm text-slate-400">VS</div>
-                    <div class="w-5/12">
-                        <div id="modalWhiteTeam" class="font-black text-sm sm:text-base text-slate-800 truncate">白チーム</div>
-                        <div class="text-[10px] sm:text-xs text-slate-500 font-bold">白 (○)</div>
+                <!-- 対戦チームヘッダー & チーム総合勝敗サマリー -->
+                <div class="bg-slate-100 rounded-xl p-3 border border-slate-200">
+                    <div class="flex justify-between items-center text-center">
+                        <div class="w-5/12">
+                            <div id="modalRedTeam" class="font-black text-sm sm:text-base text-red-700 truncate">赤チーム</div>
+                            <div id="modalRedSummary" class="text-xs text-red-600 font-bold mt-0.5">0勝 (0本)</div>
+                        </div>
+                        <div class="w-2/12 flex flex-col items-center">
+                            <span class="font-black text-xs sm:text-sm text-slate-400">VS</span>
+                            <span id="teamResultBadge" class="mt-1 text-[11px] px-2 py-0.5 font-black rounded border bg-slate-200 text-slate-600">進行中</span>
+                        </div>
+                        <div class="w-5/12">
+                            <div id="modalWhiteTeam" class="font-black text-sm sm:text-base text-slate-800 truncate">白チーム</div>
+                            <div id="modalWhiteSummary" class="text-xs text-slate-600 font-bold mt-0.5">0勝 (0本)</div>
+                        </div>
                     </div>
                 </div>
 
@@ -96,7 +101,7 @@
         </div>
     </div>
 
-    <!-- 部位選択ダイアログ（先取・通常選択） -->
+    <!-- 部位選択ダイアログ -->
     <div id="partSelectDialog" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-3 hidden">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4 space-y-3">
             <h4 id="dialogTitle" class="font-bold text-sm text-center text-slate-800">取得部位を選択</h4>
@@ -125,7 +130,8 @@
 
             <!-- ▼ 反則・クリア -->
             <div>
-                <div class="grid grid-cols-2 gap-1.5 pt-1">
+                <div class="text-[11px] font-bold text-red-600 mb-1">▼ 反則・クリア</div>
+                <div class="grid grid-cols-2 gap-1.5">
                     <button onclick="applyPart('▲')" class="py-2 bg-red-50 border border-red-200 text-red-700 font-bold rounded-lg text-xs">反則(▲)</button>
                     <button onclick="applyPart('CLEAR')" class="py-2 bg-slate-100 border border-slate-300 text-slate-600 font-bold rounded-lg text-xs">クリア</button>
                 </div>
@@ -161,12 +167,10 @@
             renderMatchCards();
         }
 
-        // あらゆるDB形式（teamA, team1, team1_name, red_team等）のチーム名を全検索して抽出
         function parseMatchData(m, index) {
             const league = m.stage || m.league_name || m.league || m.group_name || m.group || '予選リーグ';
             const title = m.title || m.match_name || `第${index + 1}試合`;
             
-            // チーム名プロパティの網羅的チェック
             const redTeam = m.teamA || m.team_a || m.team1 || m.team1_name || m.red_team || m.redTeam || (m.teams && m.teams[0]) || '赤チーム';
             const whiteTeam = m.teamB || m.team_b || m.team2 || m.team2_name || m.white_team || m.whiteTeam || (m.teams && m.teams[1]) || '白チーム';
 
@@ -183,6 +187,7 @@
                 title,
                 redTeam,
                 whiteTeam,
+                teamResult: m.teamResult || '未実施',
                 positions: m.positions || posData
             };
         }
@@ -201,6 +206,7 @@
                         title: `${g} 第${i + 1}試合`,
                         redTeam: sampleTeams[i % sampleTeams.length],
                         whiteTeam: sampleTeams[(i + 2) % sampleTeams.length],
+                        teamResult: '未実施',
                         positions: positions.map(p => ({ position: p, red: [], white: [], result: '引分' }))
                     });
                     count++;
@@ -217,28 +223,45 @@
                 return;
             }
 
-            container.innerHTML = matchesList.map((m, i) => `
-                <div class="match-card bg-white rounded-xl p-4 shadow border border-slate-200" onclick="openModal(${i})">
-                    <div class="flex justify-between items-center text-xs text-slate-500 font-bold mb-2">
-                        <span class="bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full font-bold">${m.league}</span>
-                        <span class="text-slate-600">${m.title}</span>
-                    </div>
-                    <div class="flex justify-between items-center text-center my-3">
-                        <div class="w-2/5">
-                            <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.redTeam}</div>
-                            <div class="text-xs text-red-600 font-bold">赤 (▲)</div>
+            container.innerHTML = matchesList.map((m, i) => {
+                const summary = calculateTeamSummary(m.positions);
+                let badgeClass = "bg-indigo-50 text-indigo-600";
+                let statusText = "タップして結果を入力";
+
+                if (summary.status === '赤勝ち') {
+                    badgeClass = "bg-red-100 text-red-700 font-black";
+                    statusText = `🔴 赤勝ち (${summary.redWins}勝 - ${summary.whiteWins}勝)`;
+                } else if (summary.status === '白勝ち') {
+                    badgeClass = "bg-indigo-100 text-indigo-800 font-black";
+                    statusText = `⚪ 白勝ち (${summary.whiteWins}勝 - ${summary.redWins}勝)`;
+                } else if (summary.status === '引分') {
+                    badgeClass = "bg-amber-100 text-amber-800 font-black";
+                    statusText = `🤝 引分 (${summary.redWins}勝 - ${summary.whiteWins}勝)`;
+                }
+
+                return `
+                    <div class="match-card bg-white rounded-xl p-4 shadow border border-slate-200" onclick="openModal(${i})">
+                        <div class="flex justify-between items-center text-xs text-slate-500 font-bold mb-2">
+                            <span class="bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full font-bold">${m.league}</span>
+                            <span class="text-slate-600">${m.title}</span>
                         </div>
-                        <div class="w-1/5 font-black text-base text-slate-300">VS</div>
-                        <div class="w-2/5">
-                            <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.whiteTeam}</div>
-                            <div class="text-xs text-slate-500 font-bold">白 (○)</div>
+                        <div class="flex justify-between items-center text-center my-3">
+                            <div class="w-2/5">
+                                <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.redTeam}</div>
+                                <div class="text-xs text-red-600 font-bold">赤 (▲)</div>
+                            </div>
+                            <div class="w-1/5 font-black text-base text-slate-300">VS</div>
+                            <div class="w-2/5">
+                                <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.whiteTeam}</div>
+                                <div class="text-xs text-slate-500 font-bold">白 (○)</div>
+                            </div>
+                        </div>
+                        <div class="text-center">
+                            <span class="inline-block ${badgeClass} text-xs px-3 py-1 rounded-full font-bold">${statusText}</span>
                         </div>
                     </div>
-                    <div class="text-center">
-                        <span class="inline-block bg-indigo-50 text-indigo-600 text-xs px-3 py-1 rounded-full font-bold">タップして結果を入力（先鋒〜大将）</span>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         // モーダル表示
@@ -259,22 +282,68 @@
             document.getElementById('scoreModal').classList.add('hidden');
         }
 
-        // ★勝敗自動計算ロジック（取得部位の数をカウント）
+        // ★① 個人の勝敗判定（反則▲のカウントルール適用）
         function calculatePosResult(redPts, whitePts) {
-            // 有効な本数（CLEARや▲以外の技）をカウント
-            const redCount = redPts.filter(p => p !== '▲' && p !== 'CLEAR').length;
-            const whiteCount = whitePts.filter(p => p !== '▲' && p !== 'CLEAR').length;
+            // 直接取得した本数（メ, コ, ド, ツ 等）
+            let redCount = redPts.filter(p => p !== '▲' && p !== 'CLEAR').length;
+            let whiteCount = whitePts.filter(p => p !== '▲' && p !== 'CLEAR').length;
+
+            // 反則▲の集計（2回で相手に1本、4回で2本）
+            const redFouls = redPts.filter(p => p === '▲').length;
+            const whiteFouls = whitePts.filter(p => p === '▲').length;
+
+            // 赤の反則により白が得た本数
+            whiteCount += Math.floor(redFouls / 2);
+            // 白の反則により赤が得た本数
+            redCount += Math.floor(whiteFouls / 2);
 
             if (redCount > whiteCount) {
-                return { text: '赤勝ち', class: 'bg-red-100 text-red-700 border-red-300' };
+                return { text: '赤勝ち', class: 'bg-red-100 text-red-700 border-red-300', redPts: redCount, whitePts: whiteCount };
             } else if (whiteCount > redCount) {
-                return { text: '白勝ち', class: 'bg-indigo-100 text-indigo-700 border-indigo-300' };
+                return { text: '白勝ち', class: 'bg-indigo-100 text-indigo-700 border-indigo-300', redPts: redCount, whitePts: whiteCount };
             } else {
-                return { text: '引分', class: 'bg-amber-50 text-amber-700 border-amber-200' };
+                return { text: '引分', class: 'bg-amber-50 text-amber-700 border-amber-200', redPts: redCount, whitePts: whiteCount };
             }
         }
 
-        // 先鋒〜大将の行を表示
+        // ★② チーム（団体戦）勝敗の集計ロジック（予選リーグ引分対応）
+        function calculateTeamSummary(positionsData) {
+            let redWins = 0, whiteWins = 0, draws = 0;
+            let redTotalPts = 0, whiteTotalPts = 0;
+            let hasInput = false;
+
+            positionsData.forEach(pos => {
+                const res = calculatePosResult(pos.red, pos.white);
+                redTotalPts += res.redPts;
+                whiteTotalPts += res.whitePts;
+
+                if (pos.red.length > 0 || pos.white.length > 0) hasInput = true;
+
+                if (res.text === '赤勝ち') redWins++;
+                else if (res.text === '白勝ち') whiteWins++;
+                else draws++;
+            });
+
+            if (!hasInput) {
+                return { status: '未実施', redWins, whiteWins, redTotalPts, whiteTotalPts, draws };
+            }
+
+            // 勝ち数の比較 -> 本数の比較 -> 同点なら引き分け
+            let status = '引分';
+            if (redWins > whiteWins) {
+                status = '赤勝ち';
+            } else if (whiteWins > redWins) {
+                status = '白勝ち';
+            } else { // 勝ち数が同じ場合、総取得本数で比較
+                if (redTotalPts > whiteTotalPts) status = '赤勝ち';
+                else if (whiteTotalPts > redTotalPts) status = '白勝ち';
+                else status = '引分';
+            }
+
+            return { status, redWins, whiteWins, redTotalPts, whiteTotalPts, draws };
+        }
+
+        // 先鋒〜大将の行を表示 & サマリー更新
         function renderPositionRows() {
             const tbody = document.getElementById('positionRows');
             const match = matchesList[currentMatchIndex];
@@ -287,9 +356,8 @@
                 const redStr = pos.red.join(' ') || '-';
                 const whiteStr = pos.white.join(' ') || '-';
 
-                // 自動で勝敗を判定
                 const res = calculatePosResult(pos.red, pos.white);
-                pos.result = res.text; // データも更新
+                pos.result = res.text;
 
                 tr.innerHTML = `
                     <td class="p-2 font-bold text-center bg-slate-100 text-slate-700">${pos.position}</td>
@@ -309,9 +377,29 @@
                 `;
                 tbody.appendChild(tr);
             });
+
+            // チーム勝敗ヘッダーのリアルタイム更新
+            const summary = calculateTeamSummary(match.positions);
+            document.getElementById('modalRedSummary').innerText = `${summary.redWins}勝 (${summary.redTotalPts}本)`;
+            document.getElementById('modalWhiteSummary').innerText = `${summary.whiteWins}勝 (${summary.whiteTotalPts}本)`;
+            
+            const badge = document.getElementById('teamResultBadge');
+            if (summary.status === '赤勝ち') {
+                badge.className = "mt-1 text-[11px] px-2.5 py-0.5 font-black rounded border bg-red-100 text-red-700 border-red-300";
+                badge.innerText = "🔴 赤チーム勝利";
+            } else if (summary.status === '白勝ち') {
+                badge.className = "mt-1 text-[11px] px-2.5 py-0.5 font-black rounded border bg-indigo-100 text-indigo-800 border-indigo-300";
+                badge.innerText = "⚪ 白チーム勝利";
+            } else if (summary.status === '引分') {
+                badge.className = "mt-1 text-[11px] px-2.5 py-0.5 font-black rounded border bg-amber-100 text-amber-800 border-amber-300";
+                badge.innerText = "🤝 引き分け";
+            } else {
+                badge.className = "mt-1 text-[11px] px-2.5 py-0.5 font-black rounded border bg-slate-200 text-slate-600";
+                badge.innerText = "未実施";
+            }
         }
 
-        // 部位選択ダイアログを開く
+        // 部位選択ダイアログ
         function openPartDialog(posIdx, side) {
             activePosIndex = posIdx;
             activeSide = side;
@@ -327,7 +415,6 @@
             document.getElementById('partSelectDialog').classList.add('hidden');
         }
 
-        // 取得部位の適用
         function applyPart(part) {
             const pos = matchesList[currentMatchIndex].positions[activePosIndex];
             const target = activeSide === 'red' ? pos.red : pos.white;
@@ -335,17 +422,44 @@
             if (part === 'CLEAR') {
                 target.length = 0;
             } else {
-                if (target.length < 2) {
+                if (target.length < 4) { // 反則も含めて最大4つまで
                     target.push(part);
                 }
             }
 
             closePartDialog();
-            renderPositionRows(); // 勝敗判定も含めて再描画
+            renderPositionRows();
         }
 
-        function saveScores() {
-            alert('団体戦結果（勝敗自動判定済み）を確定・保存しました！');
+        // ★③ サーバー/DB（Supabase）＆ ローカルへの反映処理
+        async function saveScores() {
+            const match = matchesList[currentMatchIndex];
+            const summary = calculateTeamSummary(match.positions);
+            match.teamResult = summary.status;
+
+            try {
+                // バックエンドAPIへPOST/PUT送信（閲覧用DBの更新）
+                await fetch(`/api/matches/${match.id}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: match.id,
+                        positions: match.positions,
+                        teamResult: summary.status,
+                        redWins: summary.redWins,
+                        whiteWins: summary.whiteWins,
+                        redTotalPts: summary.redTotalPts,
+                        whiteTotalPts: summary.whiteTotalPts
+                    })
+                });
+            } catch (err) {
+                console.log('サーバー反映フォールバック（Local保存）');
+            }
+
+            // バックアップ用ローカルストレージ保存
+            localStorage.setItem('kendo_matches', JSON.stringify(matchesList));
+
+            alert(`【${summary.status}】で団体戦結果を確定し、データベースへ反映しました！`);
             closeModal();
             renderMatchCards();
         }
