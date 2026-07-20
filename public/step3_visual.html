@@ -13,7 +13,11 @@
         }
         .match-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+        }
+        .match-card-finished {
+            background-color: #f8fafc;
+            border-color: #cbd5e1;
         }
         .modal-scroll {
             max-height: calc(88vh - 120px);
@@ -22,33 +26,37 @@
         }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans p-2 sm:p-4 md:p-8">
+<body class="bg-slate-100 text-slate-800 font-sans p-2 sm:p-4 md:p-8">
 
-    <div class="max-w-7xl mx-auto">
+    <div class="max-w-7xl mx-auto space-y-6">
         <!-- ヘッダー -->
-        <header class="mb-4 sm:mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
             <div>
                 <a href="/step2.html" class="text-xs sm:text-sm font-bold text-indigo-600 hover:text-indigo-800">← 組み合わせ管理画面へ戻る</a>
                 <h1 class="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 flex items-center gap-2 mt-1">
                     ⚔️ ビジュアル対戦管理ダッシュボード
                 </h1>
             </div>
+            <div class="flex gap-2 text-xs font-bold text-slate-500">
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-white border border-slate-300 inline-block"></span> 未実施</span>
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-slate-200 border border-slate-400 inline-block"></span> 試合終了</span>
+            </div>
         </header>
 
-        <!-- 試合一覧コンテナ -->
-        <div id="matchesContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div class="text-center py-8 text-slate-400 font-bold col-span-full">対戦データを読み込み中...</div>
+        <!-- リーグ別・試合一覧コンテナ -->
+        <div id="matchesContainer" class="space-y-8">
+            <div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">対戦データを整理して読み込み中...</div>
         </div>
     </div>
 
-    <!-- 団体戦結果入力モーダル（ポジション別：先鋒〜大将） -->
+    <!-- 団体戦結果入力モーダル -->
     <div id="scoreModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
             
             <!-- モーダルヘッダー -->
             <div class="bg-indigo-900 text-white p-3 sm:p-4 flex justify-between items-center shrink-0">
                 <div>
-                    <span id="modalGroupBadge" class="text-xs bg-indigo-700 px-2 py-0.5 rounded text-indigo-100 font-bold">予選リーグ</span>
+                    <span id="modalGroupBadge" class="text-xs bg-indigo-700 px-2.5 py-0.5 rounded-full text-indigo-100 font-bold">予選 Aリーグ</span>
                     <h2 id="modalMatchTitle" class="text-base sm:text-lg font-bold">対戦詳細</h2>
                 </div>
                 <button onclick="closeModal()" class="text-slate-300 hover:text-white text-2xl font-bold px-2">&times;</button>
@@ -57,7 +65,7 @@
             <!-- モーダルボディ -->
             <div class="p-3 sm:p-5 modal-scroll space-y-4">
                 
-                <!-- 対戦チームヘッダー & チーム総合勝敗サマリー -->
+                <!-- 対戦チームヘッダー & サマリー -->
                 <div class="bg-slate-100 rounded-xl p-3 border border-slate-200">
                     <div class="flex justify-between items-center text-center">
                         <div class="w-5/12">
@@ -66,7 +74,7 @@
                         </div>
                         <div class="w-2/12 flex flex-col items-center">
                             <span class="font-black text-xs sm:text-sm text-slate-400">VS</span>
-                            <span id="teamResultBadge" class="mt-1 text-[11px] px-2 py-0.5 font-black rounded border bg-slate-200 text-slate-600">進行中</span>
+                            <span id="teamResultBadge" class="mt-1 text-[11px] px-2 py-0.5 font-black rounded border bg-slate-200 text-slate-600">未実施</span>
                         </div>
                         <div class="w-5/12">
                             <div id="modalWhiteTeam" class="font-black text-sm sm:text-base text-slate-800 truncate">白チーム</div>
@@ -75,7 +83,7 @@
                     </div>
                 </div>
 
-                <!-- ポジション別対戦表（先鋒・次鋒・中堅・副将・大将） -->
+                <!-- ポジション別対戦表 -->
                 <div class="overflow-x-auto">
                     <table class="w-full text-xs sm:text-sm border-collapse min-w-[550px]">
                         <thead>
@@ -86,9 +94,7 @@
                                 <th class="p-2 text-center">白 (○) 取得部位</th>
                             </tr>
                         </thead>
-                        <tbody id="positionRows">
-                            <!-- JSで先鋒〜大将の5行を動的生成 -->
-                        </tbody>
+                        <tbody id="positionRows"></tbody>
                     </table>
                 </div>
             </div>
@@ -96,12 +102,12 @@
             <!-- フッター -->
             <div class="p-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 shrink-0">
                 <button onclick="closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-700">キャンセル</button>
-                <button onclick="saveScores()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs sm:text-sm font-bold text-white shadow">💾 団体戦結果を確定して反映</button>
+                <button onclick="saveScores()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs sm:text-sm font-bold text-white shadow">💾 団体戦結果を確定して保存</button>
             </div>
         </div>
     </div>
 
-    <!-- 部位選択ダイアログ -->
+    <!-- 部位選択ダイアログ（引分ボタン追加） -->
     <div id="partSelectDialog" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-3 hidden">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4 space-y-3">
             <h4 id="dialogTitle" class="font-bold text-sm text-center text-slate-800">取得部位を選択</h4>
@@ -128,16 +134,17 @@
                 </div>
             </div>
 
-            <!-- ▼ 反則・クリア -->
+            <!-- ▼ 反則・引分・クリア -->
             <div>
-                <div class="text-[11px] font-bold text-red-600 mb-1">▼ 反則・クリア</div>
-                <div class="grid grid-cols-2 gap-1.5">
+                <div class="text-[11px] font-bold text-slate-600 mb-1">▼ その他</div>
+                <div class="grid grid-cols-3 gap-1.5">
                     <button onclick="applyPart('▲')" class="py-2 bg-red-50 border border-red-200 text-red-700 font-bold rounded-lg text-xs">反則(▲)</button>
+                    <button onclick="applyPart('引分')" class="py-2 bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold rounded-lg text-xs">引分</button>
                     <button onclick="applyPart('CLEAR')" class="py-2 bg-slate-100 border border-slate-300 text-slate-600 font-bold rounded-lg text-xs">クリア</button>
                 </div>
             </div>
 
-            <button onclick="closePartDialog()" class="w-full py-2 bg-slate-200 text-slate-600 font-bold rounded-lg text-xs mt-1">キャンセル</button>
+            <button onclick="closePartDialog()" class="w-full py-2 bg-slate-200 text-slate-600 font-bold rounded-lg text-xs mt-1">閉じる</button>
         </div>
     </div>
 
@@ -146,7 +153,7 @@
         let matchesList = [];
         let currentMatchIndex = null;
         let activePosIndex = null;
-        let activeSide = null; // 'red' or 'white'
+        let activeSide = null;
 
         // 試合データ取得
         async function loadMatches() {
@@ -154,7 +161,6 @@
                 const res = await fetch('/api/matches');
                 if(!res.ok) throw new Error('通信失敗');
                 const data = await res.json();
-                
                 matchesList = data.map((m, i) => parseMatchData(m, i));
             } catch (e) {
                 const saved = localStorage.getItem('kendo_matches');
@@ -164,11 +170,11 @@
                     matchesList = generateFallbackData();
                 }
             }
-            renderMatchCards();
+            renderMatchGroups();
         }
 
         function parseMatchData(m, index) {
-            const league = m.stage || m.league_name || m.league || m.group_name || m.group || '予選リーグ';
+            const league = m.stage || m.league_name || m.league || m.group_name || m.group || 'Aリーグ';
             const title = m.title || m.match_name || `第${index + 1}試合`;
             
             const redTeam = m.teamA || m.team_a || m.team1 || m.team1_name || m.red_team || m.redTeam || (m.teams && m.teams[0]) || '赤チーム';
@@ -187,13 +193,13 @@
                 title,
                 redTeam,
                 whiteTeam,
-                teamResult: m.teamResult || '未実施',
+                isFinished: m.isFinished || false,
                 positions: m.positions || posData
             };
         }
 
         function generateFallbackData() {
-            const groups = ['Aリーグ', 'Bリーグ', 'Cリーグ', 'Dリーグ'];
+            const groups = ['Aリーグ', 'Bリーグ', 'Cリーグ', 'Dリーグ', 'Eリーグ', 'Fリーグ'];
             const sampleTeams = ['春日市筑葉会', '大野東剣道', '太宰府振武会', '須恵剣友会', '清流館', '松武館'];
             let result = [];
             let count = 1;
@@ -202,11 +208,11 @@
                 for(let i = 0; i < 3; i++) {
                     result.push({
                         id: count,
-                        league: `予選 ${g}`,
-                        title: `${g} 第${i + 1}試合`,
-                        redTeam: sampleTeams[i % sampleTeams.length],
-                        whiteTeam: sampleTeams[(i + 2) % sampleTeams.length],
-                        teamResult: '未実施',
+                        league: g,
+                        title: `第${i + 1}試合`,
+                        redTeam: sampleTeams[(i + count) % sampleTeams.length],
+                        whiteTeam: sampleTeams[(i + count + 2) % sampleTeams.length],
+                        isFinished: false,
                         positions: positions.map(p => ({ position: p, red: [], white: [], result: '引分' }))
                     });
                     count++;
@@ -215,53 +221,88 @@
             return result;
         }
 
-        // 試合カード一覧描画
-        function renderMatchCards() {
+        // ★予選リーグごとに順序（A→B→C...）を正しく整列してグループ表示
+        function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
                 container.innerHTML = '<div class="text-center py-8 text-slate-400 font-bold col-span-full">登録されている対戦がありません</div>';
                 return;
             }
 
-            container.innerHTML = matchesList.map((m, i) => {
-                const summary = calculateTeamSummary(m.positions);
-                let badgeClass = "bg-indigo-50 text-indigo-600";
-                let statusText = "タップして結果を入力";
+            // リーグ（グループ）名で昇順ソート（Aリーグ, Bリーグ...）
+            const grouped = {};
+            matchesList.forEach((m, originalIndex) => {
+                m._originalIndex = originalIndex;
+                if (!grouped[m.league]) grouped[m.league] = [];
+                grouped[m.league].push(m);
+            });
 
-                if (summary.status === '赤勝ち') {
-                    badgeClass = "bg-red-100 text-red-700 font-black";
-                    statusText = `🔴 赤勝ち (${summary.redWins}勝 - ${summary.whiteWins}勝)`;
-                } else if (summary.status === '白勝ち') {
-                    badgeClass = "bg-indigo-100 text-indigo-800 font-black";
-                    statusText = `⚪ 白勝ち (${summary.whiteWins}勝 - ${summary.redWins}勝)`;
-                } else if (summary.status === '引分') {
-                    badgeClass = "bg-amber-100 text-amber-800 font-black";
-                    statusText = `🤝 引分 (${summary.redWins}勝 - ${summary.whiteWins}勝)`;
-                }
+            const sortedLeagues = Object.keys(grouped).sort((a, b) => a.localeCompare(b, 'ja'));
 
+            container.innerHTML = sortedLeagues.map(leagueName => {
+                const matches = grouped[leagueName];
+                
                 return `
-                    <div class="match-card bg-white rounded-xl p-4 shadow border border-slate-200" onclick="openModal(${i})">
-                        <div class="flex justify-between items-center text-xs text-slate-500 font-bold mb-2">
-                            <span class="bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full font-bold">${m.league}</span>
-                            <span class="text-slate-600">${m.title}</span>
+                    <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
+                        <div class="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
+                            <span class="w-3 h-6 bg-indigo-600 rounded-full inline-block"></span>
+                            <h3 class="text-lg font-black text-slate-900">${leagueName}</h3>
+                            <span class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">${matches.length}試合</span>
                         </div>
-                        <div class="flex justify-between items-center text-center my-3">
-                            <div class="w-2/5">
-                                <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.redTeam}</div>
-                                <div class="text-xs text-red-600 font-bold">赤 (▲)</div>
-                            </div>
-                            <div class="w-1/5 font-black text-base text-slate-300">VS</div>
-                            <div class="w-2/5">
-                                <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.whiteTeam}</div>
-                                <div class="text-xs text-slate-500 font-bold">白 (○)</div>
-                            </div>
-                        </div>
-                        <div class="text-center">
-                            <span class="inline-block ${badgeClass} text-xs px-3 py-1 rounded-full font-bold">${statusText}</span>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            ${matches.map(m => renderMatchCardHtml(m)).join('')}
                         </div>
                     </div>
                 `;
             }).join('');
+        }
+
+        // 単一試合カードHTMLの生成（入力済み・未入力で見た目を明確に変更）
+        function renderMatchCardHtml(m) {
+            const summary = calculateTeamSummary(m.positions);
+            const isFinished = m.isFinished || (summary.status !== '未実施' && summary.hasInput);
+
+            let cardStyle = "bg-white border-slate-200 hover:border-indigo-300";
+            let statusBadge = `<span class="inline-block bg-indigo-50 text-indigo-600 text-xs px-3 py-1 rounded-full font-bold">タップして結果入力</span>`;
+            let winnerText = "";
+
+            if (isFinished) {
+                cardStyle = "match-card-finished border-slate-300";
+                if (summary.status === '赤勝ち') {
+                    statusBadge = `<span class="inline-block bg-red-600 text-white text-xs px-3 py-1 rounded-full font-black shadow-sm">FINISHED (赤勝)</span>`;
+                    winnerText = `<div class="text-xs font-black text-red-600 mt-1 truncate">🏆 勝者: ${m.redTeam}</div>`;
+                } else if (summary.status === '白勝ち') {
+                    statusBadge = `<span class="inline-block bg-indigo-700 text-white text-xs px-3 py-1 rounded-full font-black shadow-sm">FINISHED (白勝)</span>`;
+                    winnerText = `<div class="text-xs font-black text-indigo-800 mt-1 truncate">🏆 勝者: ${m.whiteTeam}</div>`;
+                } else {
+                    statusBadge = `<span class="inline-block bg-amber-600 text-white text-xs px-3 py-1 rounded-full font-black shadow-sm">FINISHED (引分)</span>`;
+                    winnerText = `<div class="text-xs font-bold text-amber-700 mt-1">🤝 引き分け</div>`;
+                }
+            }
+
+            return `
+                <div class="match-card rounded-xl p-4 shadow-sm border ${cardStyle}" onclick="openModal(${m._originalIndex})">
+                    <div class="flex justify-between items-center text-xs text-slate-500 font-bold mb-2">
+                        <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-bold">${m.league}</span>
+                        <span class="text-slate-600">${m.title}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-center my-3">
+                        <div class="w-2/5">
+                            <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.redTeam}</div>
+                            <div class="text-xs text-red-600 font-bold">赤 (${summary.redWins}勝/${summary.redTotalPts}本)</div>
+                        </div>
+                        <div class="w-1/5 font-black text-base text-slate-300">VS</div>
+                        <div class="w-2/5">
+                            <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.whiteTeam}</div>
+                            <div class="text-xs text-slate-500 font-bold">白 (${summary.whiteWins}勝/${summary.whiteTotalPts}本)</div>
+                        </div>
+                    </div>
+                    <div class="text-center pt-1">
+                        ${statusBadge}
+                        ${winnerText}
+                    </div>
+                </div>
+            `;
         }
 
         // モーダル表示
@@ -282,19 +323,15 @@
             document.getElementById('scoreModal').classList.add('hidden');
         }
 
-        // ★① 個人の勝敗判定（反則▲のカウントルール適用）
+        // 個人の勝敗判定
         function calculatePosResult(redPts, whitePts) {
-            // 直接取得した本数（メ, コ, ド, ツ 等）
-            let redCount = redPts.filter(p => p !== '▲' && p !== 'CLEAR').length;
-            let whiteCount = whitePts.filter(p => p !== '▲' && p !== 'CLEAR').length;
+            let redCount = redPts.filter(p => p !== '▲' && p !== 'CLEAR' && p !== '引分').length;
+            let whiteCount = whitePts.filter(p => p !== '▲' && p !== 'CLEAR' && p !== '引分').length;
 
-            // 反則▲の集計（2回で相手に1本、4回で2本）
             const redFouls = redPts.filter(p => p === '▲').length;
             const whiteFouls = whitePts.filter(p => p === '▲').length;
 
-            // 赤の反則により白が得た本数
             whiteCount += Math.floor(redFouls / 2);
-            // 白の反則により赤が得た本数
             redCount += Math.floor(whiteFouls / 2);
 
             if (redCount > whiteCount) {
@@ -306,7 +343,7 @@
             }
         }
 
-        // ★② チーム（団体戦）勝敗の集計ロジック（予選リーグ引分対応）
+        // チーム集計
         function calculateTeamSummary(positionsData) {
             let redWins = 0, whiteWins = 0, draws = 0;
             let redTotalPts = 0, whiteTotalPts = 0;
@@ -325,25 +362,22 @@
             });
 
             if (!hasInput) {
-                return { status: '未実施', redWins, whiteWins, redTotalPts, whiteTotalPts, draws };
+                return { status: '未実施', hasInput: false, redWins: 0, whiteWins: 0, redTotalPts: 0, whiteTotalPts: 0 };
             }
 
-            // 勝ち数の比較 -> 本数の比較 -> 同点なら引き分け
             let status = '引分';
-            if (redWins > whiteWins) {
-                status = '赤勝ち';
-            } else if (whiteWins > redWins) {
-                status = '白勝ち';
-            } else { // 勝ち数が同じ場合、総取得本数で比較
+            if (redWins > whiteWins) status = '赤勝ち';
+            else if (whiteWins > redWins) status = '白勝ち';
+            else {
                 if (redTotalPts > whiteTotalPts) status = '赤勝ち';
                 else if (whiteTotalPts > redTotalPts) status = '白勝ち';
                 else status = '引分';
             }
 
-            return { status, redWins, whiteWins, redTotalPts, whiteTotalPts, draws };
+            return { status, hasInput: true, redWins, whiteWins, redTotalPts, whiteTotalPts, draws };
         }
 
-        // 先鋒〜大将の行を表示 & サマリー更新
+        // ポジション行描画
         function renderPositionRows() {
             const tbody = document.getElementById('positionRows');
             const match = matchesList[currentMatchIndex];
@@ -378,7 +412,6 @@
                 tbody.appendChild(tr);
             });
 
-            // チーム勝敗ヘッダーのリアルタイム更新
             const summary = calculateTeamSummary(match.positions);
             document.getElementById('modalRedSummary').innerText = `${summary.redWins}勝 (${summary.redTotalPts}本)`;
             document.getElementById('modalWhiteSummary').innerText = `${summary.whiteWins}勝 (${summary.whiteTotalPts}本)`;
@@ -399,7 +432,6 @@
             }
         }
 
-        // 部位選択ダイアログ
         function openPartDialog(posIdx, side) {
             activePosIndex = posIdx;
             activeSide = side;
@@ -421,8 +453,15 @@
 
             if (part === 'CLEAR') {
                 target.length = 0;
+            } else if (part === '引分') {
+                // 明示的に引分を入力
+                target.length = 0;
+                target.push('引分');
             } else {
-                if (target.length < 4) { // 反則も含めて最大4つまで
+                if (target.length < 4) {
+                    // 引分指定が入っていたら除去
+                    const idx = target.indexOf('引分');
+                    if (idx !== -1) target.splice(idx, 1);
                     target.push(part);
                 }
             }
@@ -431,40 +470,33 @@
             renderPositionRows();
         }
 
-        // ★③ サーバー/DB（Supabase）＆ ローカルへの反映処理
         async function saveScores() {
             const match = matchesList[currentMatchIndex];
             const summary = calculateTeamSummary(match.positions);
-            match.teamResult = summary.status;
+            match.isFinished = true;
 
             try {
-                // バックエンドAPIへPOST/PUT送信（閲覧用DBの更新）
                 await fetch(`/api/matches/${match.id}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         id: match.id,
                         positions: match.positions,
-                        teamResult: summary.status,
-                        redWins: summary.redWins,
-                        whiteWins: summary.whiteWins,
-                        redTotalPts: summary.redTotalPts,
-                        whiteTotalPts: summary.whiteTotalPts
+                        isFinished: true,
+                        teamResult: summary.status
                     })
                 });
             } catch (err) {
-                console.log('サーバー反映フォールバック（Local保存）');
+                console.log('Local保存');
             }
 
-            // バックアップ用ローカルストレージ保存
             localStorage.setItem('kendo_matches', JSON.stringify(matchesList));
 
-            alert(`【${summary.status}】で団体戦結果を確定し、データベースへ反映しました！`);
+            alert(`【${summary.status}】で確定し、一覧へ反映しました！`);
             closeModal();
-            renderMatchCards();
+            renderMatchGroups();
         }
 
-        // 初期読み込み実行
         loadMatches();
     </script>
 </body>
