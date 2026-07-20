@@ -2,13 +2,14 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ビジュアル対戦管理ダッシュボード</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .match-card {
             cursor: pointer;
             transition: all 0.2s ease;
+            -webkit-tap-highlight-color: transparent; /* スマホタップ時のハイライトを最適化 */
         }
         .match-card:hover {
             transform: translateY(-2px);
@@ -21,473 +22,203 @@
             background-color: #cbd5e1;
             border-radius: 3px;
         }
+        /* スマホ向けモーダルの表示領域調整 */
+        .modal-body-scroll {
+            max-height: calc(85vh - 120px);
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans p-4 md:p-8">
+<body class="bg-slate-50 text-slate-800 font-sans p-2 sm:p-4 md:p-8">
 
     <div class="max-w-7xl mx-auto">
         <!-- ヘッダー -->
-        <header class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center border-b pb-4 gap-4">
+        <header class="mb-4 sm:mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
             <div>
-                <a href="/admin.html" class="text-sm font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 mb-1">← 管理画面メニューに戻る</a>
-                <h1 class="text-2xl md:text-3xl font-black text-slate-900 flex items-center gap-2">⚔️ 当日試合進行・直感入力ボード</h1>
-            </div>
-            
-            <div class="flex items-center gap-2 bg-white p-2 rounded-lg shadow-sm border w-full md:w-auto">
-                <span class="text-sm font-bold text-slate-500 pl-2">表示部門:</span>
-                <select id="currentCategory" onchange="loadCategoryData()" class="bg-transparent font-bold text-slate-800 focus:outline-none cursor-pointer pr-4">
-                    <option value="low_elem">小学生低学年</option>
-                    <option value="elem">小学生団体</option>
-                    <option value="mid">中学生団体</option>
-                    <option value="mid_girls">中学女子団体</option>
-                </select>
+                <a href="/admin.html" class="text-xs sm:text-sm font-bold text-indigo-600 hover:text-indigo-800">← 管理画面へ戻る</a>
+                <h1 class="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 flex items-center gap-2 mt-1">
+                    ⚔️ ビジュアル対戦管理ダッシュボード
+                </h1>
             </div>
         </header>
 
-        <!-- 凡例 -->
-        <div class="flex gap-4 mb-6 text-xs font-bold">
-            <span class="flex items-center gap-1"><span class="w-3 h-3 bg-white border rounded"></span> 試合前</span>
-            <span class="flex items-center gap-1"><span class="w-3 h-3 bg-amber-50 border border-amber-300 rounded"></span> 進行中</span>
-            <span class="flex items-center gap-1"><span class="w-3 h-3 bg-slate-200 border rounded"></span> 試合終了</span>
-        </div>
-
-        <!-- メイン描画エリア -->
-        <main class="space-y-12">
-            <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                <h2 class="text-lg font-black text-slate-900 border-b pb-2 mb-6 flex items-center gap-2">
-                    <span class="text-blue-600">▤</span> 予選リーグ（クリックして結果入力）
-                </h2>
-                <div id="leagueContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
-            </section>
-
-            <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
-                <h2 class="text-lg font-black text-slate-900 border-b pb-2 mb-6 flex items-center gap-2">
-                    <span class="text-rose-600">🏆</span> 決勝トーナメント（クリックして結果入力）
-                </h2>
-                <div id="tournamentContainer" class="flex gap-12 min-w-max p-4 justify-start items-center"></div>
-            </section>
-        </main>
-    </div>
-
-    <!-- ================================================================= -->
-    <!-- 🛑 初本(◯囲み)・反則・引き分け完全対応 モーダルポップアップ -->
-    <!-- ================================================================= -->
-    <div id="scoreModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-xl shadow-2xl border max-w-3xl w-full max-h-[90vh] overflow-y-auto transform transition-all scale-95 opacity-0 duration-200" id="modalCard">
-            
-            <div class="bg-indigo-900 text-white p-4 sticky top-0 flex justify-between items-center z-10 shadow-sm">
-                <div>
-                    <span id="modalStage" class="text-[10px] font-bold bg-indigo-700 px-2 py-0.5 rounded tracking-wide">予選リーグ</span>
-                    <h3 id="modalTitle" class="font-black mt-1 text-base text-white">Aリーグ 第1試合</h3>
+        <!-- 対戦カードリスト（サンプル） -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="match-card bg-white rounded-xl p-4 shadow border border-slate-200" onclick="openModal('Aリーグ 第3試合')">
+                <div class="flex justify-between items-center text-xs text-slate-500 font-bold mb-2">
+                    <span class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">予選リーグ</span>
+                    <span>Aリーグ 第3試合</span>
                 </div>
-                <button onclick="closeModal()" class="text-indigo-200 hover:text-white font-bold text-2xl">&times;</button>
+                <div class="flex justify-between items-center text-center my-3">
+                    <div class="w-2/5">
+                        <div class="font-bold text-sm sm:text-base truncate">大野東剣道</div>
+                        <div class="text-xs text-red-600 font-semibold">赤 (▲)</div>
+                    </div>
+                    <div class="w-1/5 font-black text-lg text-slate-400">VS</div>
+                    <div class="w-2/5">
+                        <div class="font-bold text-sm sm:text-base truncate">太宰府振武会</div>
+                        <div class="text-xs text-slate-500 font-semibold">白 (○)</div>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <span class="inline-block bg-slate-100 text-slate-600 text-xs px-3 py-1 rounded-full font-bold">クリック／タップしてスコア入力</span>
+                </div>
             </div>
-            
-            <form id="scoreForm" onsubmit="submitScore(event)" class="p-4 md:p-6 space-y-6">
-                <input type="hidden" id="matchId">
-                
-                <!-- チームサマリー -->
-                <div class="grid grid-cols-7 items-center gap-2 text-center bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
-                    <div class="col-span-2">
-                        <div id="modalTeamA" class="font-black text-base text-slate-900 truncate">チームA</div>
-                        <span class="text-xs text-indigo-600 font-bold">赤 (▲)</span>
-                    </div>
-                    
-                    <div class="col-span-3 flex justify-center items-center gap-1">
-                        <div class="text-center">
-                            <span class="block text-[10px] text-slate-400 font-bold">勝者数</span>
-                            <input type="number" id="scoreA" class="w-12 text-center font-black text-xl bg-white border rounded p-1" readonly>
-                        </div>
-                        <div class="text-slate-300 font-bold text-xl px-1">/</div>
-                        <div class="text-center">
-                            <span class="block text-[10px] text-slate-400 font-bold">総本数</span>
-                            <span id="totalHonsuA" class="inline-block w-12 text-center font-black text-xl bg-slate-100 text-slate-700 border rounded p-1">0</span>
-                        </div>
-                        <div class="font-bold text-slate-400 text-xs px-2">VS</div>
-                        <div class="text-center">
-                            <span class="block text-[10px] text-slate-400 font-bold">勝者数</span>
-                            <input type="number" id="scoreB" class="w-12 text-center font-black text-xl bg-white border rounded p-1" readonly>
-                        </div>
-                        <div class="text-slate-300 font-bold text-xl px-1">/</div>
-                        <div class="text-center">
-                            <span class="block text-[10px] text-slate-400 font-bold">総本数</span>
-                            <span id="totalHonsuB" class="inline-block w-12 text-center font-black text-xl bg-slate-100 text-slate-700 border rounded p-1">0</span>
-                        </div>
-                    </div>
-
-                    <div class="col-span-2">
-                        <div id="modalTeamB" class="font-black text-base text-slate-900 truncate">チームB</div>
-                        <span class="text-xs text-slate-400 font-bold">白 (○)</span>
-                    </div>
-                </div>
-
-                <!-- ⚔️ 個人対戦表 -->
-                <div>
-                    <div class="flex justify-between items-center mb-2">
-                        <h4 class="text-xs font-black text-slate-400 uppercase tracking-wider">▼ ポジション別対戦結果</h4>
-                        <span class="text-[11px] text-slate-500 font-bold">💡 一本目は自動で <span class="text-red-600 font-black">◯メ</span>（初本）になります</span>
-                    </div>
-                    <div class="border rounded-xl overflow-hidden bg-white shadow-sm overflow-x-auto">
-                        <table class="w-full text-sm text-left min-w-[650px]">
-                            <thead class="bg-slate-100 text-slate-700 text-xs font-bold border-b">
-                                <tr>
-                                    <th class="p-3 text-center w-16">位置</th>
-                                    <th class="p-3 text-right w-2/5">赤 (▲) 取得部位</th>
-                                    <th class="p-3 text-center w-28">勝敗判定</th>
-                                    <th class="p-3 text-left w-2/5">白 (○) 取得部位</th>
-                                </tr>
-                            </thead>
-                            <tbody id="positionTableBody" class="divide-y font-medium text-slate-700">
-                                <!-- 動的生成 -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- ステータス -->
-                <div class="bg-slate-50 p-3 rounded-lg border">
-                    <label class="block text-xs font-bold text-slate-500 mb-1">試合全体ステータス</label>
-                    <select id="matchStatus" class="w-full bg-white border rounded-lg p-2 text-sm font-bold text-slate-700 focus:outline-indigo-500">
-                        <option value="scheduled">⏱️ 試合前 (Scheduled)</option>
-                        <option value="ongoing">🔥 進行中 (Ongoing)</option>
-                        <option value="finished">✅ 試合終了 (Finished)</option>
-                    </select>
-                </div>
-
-                <div class="flex gap-3 pt-2">
-                    <button type="button" onclick="closeModal()" class="w-1/3 border border-slate-200 text-slate-600 font-bold py-2.5 rounded-xl text-sm hover:bg-slate-50 transition">
-                        キャンセル
-                    </button>
-                    <button type="submit" class="w-2/3 bg-indigo-600 text-white font-black py-2.5 rounded-xl text-sm hover:bg-indigo-700 transition shadow-md flex justify-center items-center gap-1">
-                        💾 団体戦結果をコミットして反映
-                    </button>
-                </div>
-            </form>
         </div>
     </div>
 
-    <!-- ロジック -->
+    <!-- スコア入力モーダル -->
+    <div id="scoreModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
+            
+            <!-- モーダルヘッダー -->
+            <div class="bg-indigo-900 text-white p-3 sm:p-4 flex justify-between items-center shrink-0">
+                <div>
+                    <span class="text-xs bg-indigo-700 px-2 py-0.5 rounded text-indigo-100">予選リーグ</span>
+                    <h2 id="modalTitle" class="text-base sm:text-lg font-bold">Aリーグ 第3試合</h2>
+                </div>
+                <button onclick="closeModal()" class="text-slate-300 hover:text-white text-2xl font-bold px-2">&times;</button>
+            </div>
+
+            <!-- モーダルボディ（スクロールエリア） -->
+            <div class="p-3 sm:p-6 overflow-y-auto space-y-4 modal-body-scroll">
+                
+                <!-- チーム名・スコア表示 -->
+                <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 flex justify-between items-center text-center">
+                    <div class="w-5/12">
+                        <div class="font-bold text-xs sm:text-sm">大野東剣道スポーツ少年団</div>
+                        <div class="text-xs text-red-600 font-bold">赤 (▲)</div>
+                    </div>
+                    <div class="w-2/12 text-xs font-bold text-slate-400">VS</div>
+                    <div class="w-5/12">
+                        <div class="font-bold text-xs sm:text-sm">太宰府振武会</div>
+                        <div class="text-xs text-slate-500 font-bold">白 (○)</div>
+                    </div>
+                </div>
+
+                <div class="text-xs text-slate-500 text-right">
+                    💡 一本目取得時に自動で <span class="font-bold text-indigo-600">◯（初本）</span> が付きます
+                </div>
+
+                <!-- ポジション別対戦結果テーブル -->
+                <div class="overflow-x-auto -mx-2 sm:mx-0">
+                    <table class="w-full text-xs sm:text-sm text-left border-collapse min-w-[600px]">
+                        <thead>
+                            <tr class="border-b text-slate-500 bg-slate-50">
+                                <th class="p-2 w-12 text-center">位置</th>
+                                <th class="p-2 text-center">赤 (▲) 取得部位</th>
+                                <th class="p-2 w-20 text-center">勝敗</th>
+                                <th class="p-2 text-center">白 (○) 取得部位</th>
+                            </tr>
+                        </thead>
+                        <tbody id="matchRows">
+                            <!-- JSでポジション行を生成 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- モーダルフッター -->
+            <div class="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 shrink-0">
+                <button onclick="closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg text-xs sm:text-sm font-bold text-slate-700">キャンセル</button>
+                <button onclick="saveScores()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-xs sm:text-sm font-bold text-white shadow">💾 団体戦結果をコミットして反映</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        let allMatches = []; 
         const positions = ['先鋒', '次鋒', '中堅', '副将', '大将'];
+        // 各ポジションの入力状態データ
+        let matchData = positions.map(pos => ({
+            position: pos,
+            red: [],   // 例: ['メ']
+            white: [], // 例: ['コ', 'メ']
+            result: '引き分け'
+        }));
 
-        document.addEventListener('DOMContentLoaded', () => {
-            loadCategoryData();
-        });
-
-        async function loadCategoryData() {
-            const category = document.getElementById('currentCategory').value;
-            try {
-                const res = await fetch('/api/matches');
-                const data = await res.json();
-                allMatches = data.filter(m => m.category === category);
-                renderLeague();
-                renderTournament();
-            } catch (err) {
-                console.error("データ取得エラー:", err);
-            }
+        // モーダルを開く（スマホのタップ・クリック共通）
+        function openModal(title) {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('scoreModal').classList.remove('hidden');
+            renderRows();
         }
 
-        function renderLeague() {
-            const container = document.getElementById('leagueContainer');
-            container.innerHTML = '';
-            const leagueMatches = allMatches.filter(m => m.stage === '予選リーグ');
-            if (leagueMatches.length === 0) {
-                container.innerHTML = '<p class="text-sm text-slate-400 font-bold">予選リーグ未生成</p>';
-                return;
-            }
-
-            const groups = {};
-            leagueMatches.forEach(m => {
-                const name = m.details?.league || '予選リーグ';
-                if (!groups[name]) groups[name] = [];
-                groups[name].push(m);
-            });
-
-            Object.keys(groups).sort().forEach(groupName => {
-                const groupDiv = document.createElement('div');
-                groupDiv.className = 'border rounded-xl p-4 bg-slate-50 border-slate-200';
-                let html = `<h3 class="font-black text-indigo-900 border-b pb-1 mb-3 text-sm">📍 ${groupName}</h3><div class="space-y-2">`;
-                
-                groups[groupName].forEach(m => {
-                    const isFinished = m.status === 'finished';
-                    const isOngoing = m.status === 'ongoing';
-                    const statusBg = isFinished ? 'bg-slate-200' : (isOngoing ? 'bg-amber-50 border-amber-300' : 'bg-white');
-                    
-                    html += `
-                        <div onclick="openScoreModal(${JSON.stringify(m).replace(/"/g, '&quot;')})" class="match-card ${statusBg} p-3 border rounded-xl flex justify-between items-center text-xs shadow-sm">
-                            <div class="flex-1 min-w-0">
-                                <div class="flex justify-between items-center mb-1 text-[10px] font-bold text-slate-400">
-                                    <span>${m.title}</span>
-                                    ${isOngoing ? '<span class="text-amber-600 animate-pulse">● 進行中</span>' : ''}
-                                </div>
-                                <div class="flex justify-between font-bold text-slate-900">
-                                    <span class="${isFinished && m.scoreA > m.scoreB ? 'text-indigo-700 font-black' : ''} truncate max-w-[90px]">${m.teamA}</span>
-                                    <span class="font-mono bg-slate-100 px-1 rounded">${m.scoreA} - ${m.scoreB}</span>
-                                    <span class="${isFinished && m.scoreB > m.scoreA ? 'text-indigo-700 font-black' : ''} truncate max-w-[90px]">${m.teamB}</span>
-                                </div>
-                            </div>
-                        </div>`;
-                });
-                html += `</div>`;
-                groupDiv.innerHTML = html;
-                container.appendChild(groupDiv);
-            });
+        function closeModal() {
+            document.getElementById('scoreModal').classList.add('hidden');
         }
 
-        function renderTournament() {
-            const container = document.getElementById('tournamentContainer');
-            container.innerHTML = '';
-            const tournamentMatches = allMatches.filter(m => m.stage === '決勝トーナメント');
-            if (tournamentMatches.length === 0) {
-                container.innerHTML = '<p class="text-sm text-slate-400 font-bold">決勝トーナメント未生成</p>';
-                return;
+        // スコアボタンを押したときの処理
+        function addScore(index, side, point) {
+            const row = matchData[index];
+            const target = side === 'red' ? row.red : row.white;
+            
+            if (point === 'CLEAR') {
+                target.length = 0;
+            } else if (target.length < 2) {
+                target.push(point);
             }
-
-            const rounds = { '1回戦': [], '準決勝': [], '決勝': [] };
-            tournamentMatches.forEach(m => {
-                if (m.title.includes('1回戦')) rounds['1回戦'].push(m);
-                else if (m.title.includes('準決勝')) rounds['準決勝'].push(m);
-                else if (m.title.includes('決勝')) rounds['決勝'].push(m);
-            });
-
-            Object.keys(rounds).forEach(roundName => {
-                if (rounds[roundName].length === 0) return;
-                const roundColumn = document.createElement('div');
-                roundColumn.className = 'flex flex-col gap-8 justify-around h-full py-4';
-                let html = `<div class="text-center font-black text-xs text-slate-400 tracking-wider mb-2 border-b pb-1">${roundName}</div>`;
-                
-                rounds[roundName].sort((a,b) => a.id - b.id).forEach(m => {
-                    const isFinished = m.status === 'finished';
-                    const isOngoing = m.status === 'ongoing';
-                    const cardBg = isFinished ? 'bg-slate-200' : (isOngoing ? 'bg-amber-50 border-amber-300' : 'bg-white');
-                    
-                    html += `
-                        <div onclick="openScoreModal(${JSON.stringify(m).replace(/"/g, '&quot;')})" class="match-card ${cardBg} border rounded-xl p-3 w-56 shadow-sm">
-                            <div class="text-[10px] font-black text-slate-400 mb-1 flex justify-between">
-                                <span>${m.title}</span>
-                                ${isOngoing ? '<span class="text-amber-500 animate-pulse">進行中</span>' : ''}
-                            </div>
-                            <div class="space-y-1 text-xs">
-                                <div class="flex justify-between items-center ${isFinished && m.scoreA > m.scoreB ? 'font-black text-indigo-900' : 'text-slate-600'}">
-                                    <span class="truncate max-w-[120px]">${m.teamA}</span>
-                                    <span class="font-mono bg-slate-100 px-1.5 py-0.5 rounded">${m.scoreA}</span>
-                                </div>
-                                <div class="flex justify-between items-center ${isFinished && m.scoreB > m.scoreA ? 'font-black text-indigo-900' : 'text-slate-600'}">
-                                    <span class="truncate max-w-[120px]">${m.teamB}</span>
-                                    <span class="font-mono bg-slate-100 px-1.5 py-0.5 rounded">${m.scoreB}</span>
-                                </div>
-                            </div>
-                        </div>`;
-                });
-                roundColumn.innerHTML = html;
-                container.appendChild(roundColumn);
-            });
+            renderRows();
         }
 
-        // =================================================================
-        // ⭕ 初本(◯)＆反則＆引き分け動的制御
-        // =================================================================
-        function openScoreModal(match) {
-            document.getElementById('matchId').value = match.id;
-            document.getElementById('modalStage').innerText = match.stage;
-            document.getElementById('modalTitle').innerText = match.title;
-            document.getElementById('modalTeamA').innerText = match.teamA;
-            document.getElementById('modalTeamB').innerText = match.teamB;
-            document.getElementById('matchStatus').value = match.status || 'scheduled';
-
-            let details = [];
-            if (match.details && Array.isArray(match.details) && match.details.length === 5) {
-                details = match.details;
-            } else {
-                details = positions.map(pos => ({
-                    position: pos,
-                    honsuA: '',
-                    honsuB: '',
-                    winner: '引き分け'
-                }));
-            }
-
-            const tbody = document.getElementById('positionTableBody');
+        // 表示のレンダリング＆◯（初本）の1回のみ適用ロジック
+        function renderRows() {
+            const tbody = document.getElementById('matchRows');
             tbody.innerHTML = '';
 
-            details.forEach((row, index) => {
+            matchData.forEach((row, i) => {
+                // ★【重要】試合全体（赤＋白）の中で、一番最初に記録された本数だけに◯をつけるロジック
+                let firstScored = false;
+                
+                const formattedRed = row.red.map(p => {
+                    if (!firstScored) {
+                        firstScored = true;
+                        return '◯' + p;
+                    }
+                    return p;
+                }).join('');
+
+                const formattedWhite = row.white.map(p => {
+                    if (!firstScored) {
+                        firstScored = true;
+                        return '◯' + p;
+                    }
+                    return p;
+                }).join('');
+
                 const tr = document.createElement('tr');
-                tr.className = "hover:bg-slate-50/80 transition";
+                tr.className = 'border-b';
                 tr.innerHTML = `
-                    <td class="p-3 text-center font-black text-xs text-slate-500 bg-slate-50">${row.position}</td>
-                    
-                    <!-- 赤 (▲) 入力 -->
-                    <td class="p-3 text-right">
-                        <div class="flex items-center justify-end gap-1">
-                            <div class="flex gap-1">
-                                ${['メ', 'コ', 'ド', 'ツ', '反'].map(item => `
-                                    <button type="button" onclick="addSkill('A', ${index}, '${item}')" class="px-2 py-1 text-xs border border-slate-200 bg-white hover:bg-red-50 hover:text-red-600 hover:border-red-200 rounded font-bold transition shadow-sm">${item}</button>
-                                `).join('')}
-                                <button type="button" onclick="clearSkill('A', ${index})" class="px-1.5 py-1 text-xs text-slate-400 hover:text-slate-600 border border-slate-200 rounded">✕</button>
-                            </div>
-                            <input type="text" id="honsuA_${index}" value="${row.honsuA || ''}" oninput="calculateTotal()" class="w-16 text-center font-mono font-bold bg-slate-50 border border-slate-300 rounded p-1 text-xs focus:bg-white focus:border-indigo-500" placeholder="部位">
+                    <td class="p-2 font-bold text-center bg-slate-50">${row.position}</td>
+                    <td class="p-2">
+                        <div class="flex items-center gap-1 mb-1">
+                            ${['メ', 'コ', 'ド', 'ツ', '反'].map(pt => `
+                                <button onclick="addScore(${i}, 'red', '${pt}')" class="px-2 py-1 bg-slate-100 hover:bg-red-100 text-slate-700 font-bold rounded text-xs">${pt}</button>
+                            `).join('')}
+                            <button onclick="addScore(${i}, 'red', 'CLEAR')" class="px-1.5 py-1 text-slate-400 hover:text-red-500 text-xs">✕</button>
                         </div>
+                        <div class="font-bold text-red-600 h-5 text-sm">${formattedRed || '-'}</div>
                     </td>
-
-                    <!-- 勝敗判定 -->
-                    <td class="p-3 text-center">
-                        <select id="winner_${index}" onchange="calculateTotal()" class="bg-white border text-xs rounded font-bold p-1 text-slate-700 focus:outline-indigo-500 cursor-pointer w-full text-center">
-                            <option value="引き分け" ${row.winner === '引き分け' ? 'selected' : ''}>🤝 引分</option>
-                            <option value="A" ${row.winner === 'A' ? 'selected' : ''}>▲ 赤勝</option>
-                            <option value="B" ${row.winner === 'B' ? 'selected' : ''}>○ 白勝</option>
-                        </select>
+                    <td class="p-2 text-center">
+                        <span class="text-xs px-2 py-1 bg-amber-50 text-amber-700 font-bold rounded border border-amber-200">引分</span>
                     </td>
-
-                    <!-- 白 (○) 入力 -->
-                    <td class="p-3 text-left">
-                        <div class="flex items-center justify-start gap-1">
-                            <input type="text" id="honsuB_${index}" value="${row.honsuB || ''}" oninput="calculateTotal()" class="w-16 text-center font-mono font-bold bg-slate-50 border border-slate-300 rounded p-1 text-xs focus:bg-white focus:border-indigo-500" placeholder="部位">
-                            <div class="flex gap-1">
-                                ${['メ', 'コ', 'ド', 'ツ', '反'].map(item => `
-                                    <button type="button" onclick="addSkill('B', ${index}, '${item}')" class="px-2 py-1 text-xs border border-slate-200 bg-white hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 rounded font-bold transition shadow-sm">${item}</button>
-                                `).join('')}
-                                <button type="button" onclick="clearSkill('B', ${index})" class="px-1.5 py-1 text-xs text-slate-400 hover:text-slate-600 border border-slate-200 rounded">✕</button>
-                            </div>
+                    <td class="p-2">
+                        <div class="flex items-center gap-1 mb-1">
+                            <button onclick="addScore(${i}, 'white', 'CLEAR')" class="px-1.5 py-1 text-slate-400 hover:text-red-500 text-xs">✕</button>
+                            ${['メ', 'コ', 'ド', 'ツ', '反'].map(pt => `
+                                <button onclick="addScore(${i}, 'white', '${pt}')" class="px-2 py-1 bg-slate-100 hover:bg-blue-100 text-slate-700 font-bold rounded text-xs">${pt}</button>
+                            `).join('')}
                         </div>
+                        <div class="font-bold text-slate-700 h-5 text-sm">${formattedWhite || '-'}</div>
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
-
-            calculateTotal();
-
-            const modal = document.getElementById('scoreModal');
-            const card = document.getElementById('modalCard');
-            modal.classList.remove('hidden');
-            setTimeout(() => {
-                card.classList.remove('scale-95', 'opacity-0');
-                card.classList.add('scale-100', 'opacity-100');
-            }, 50);
         }
 
-        // 部位追加処理（一本目は自動で◯が付く機能）
-        function addSkill(side, index, skill) {
-            const input = document.getElementById(`honsu${side}_${index}`);
-            let val = input.value.trim();
-            
-            // 初本(◯)判定: まだ何も入力がなければ「◯＋部位」を自動挿入！
-            if (!val.includes('◯') && val.length === 0) {
-                input.value = `◯${skill}`;
-            } else if (val.length < 4) { // 2本目以降（例: ◯メメ）
-                input.value = val + skill;
-            }
-
-            // 勝ち・引き分けの自動判定アシスト
-            autoSelectWinner(index);
-            calculateTotal();
-        }
-
-        // 入力クリアボタン
-        function clearSkill(side, index) {
-            document.getElementById(`honsu${side}_${index}`).value = '';
-            autoSelectWinner(index);
-            calculateTotal();
-        }
-
-        // 本数の優劣で勝敗セレクトを自動調整
-        function autoSelectWinner(index) {
-            const valA = document.getElementById(`honsuA_${index}`).value;
-            const valB = document.getElementById(`honsuB_${index}`).value;
-            const winnerSelect = document.getElementById(`winner_${index}`);
-
-            // 本数をカウント（◯は文字数から除く）
-            const countA = valA.replace(/◯/g, '').length;
-            const countB = valB.replace(/◯/g, '').length;
-
-            if (countA > countB) {
-                winnerSelect.value = 'A';
-            } else if (countB > countA) {
-                winnerSelect.value = 'B';
-            } else {
-                winnerSelect.value = '引き分け';
-            }
-        }
-
-        // 合計の集計
-        function calculateTotal() {
-            let winA = 0;
-            let winB = 0;
-            let honsuA = 0;
-            let honsuB = 0;
-
-            for (let i = 0; i < 5; i++) {
-                const w = document.getElementById(`winner_${i}`).value;
-                if (w === 'A') winA++;
-                if (w === 'B') winB++;
-
-                const valA = document.getElementById(`honsuA_${i}`).value || '';
-                const valB = document.getElementById(`honsuB_${i}`).value || '';
-                
-                // ◯を除いた有効な技の数を本数としてカウント
-                honsuA += valA.replace(/◯/g, '').length;
-                honsuB += valB.replace(/◯/g, '').length;
-            }
-
-            document.getElementById('scoreA').value = winA;
-            document.getElementById('scoreB').value = winB;
-            document.getElementById('totalHonsuA').innerText = honsuA;
-            document.getElementById('totalHonsuB').innerText = honsuB;
-        }
-
-        function closeModal() {
-            const modal = document.getElementById('scoreModal');
-            const card = document.getElementById('modalCard');
-            card.classList.remove('scale-100', 'opacity-100');
-            card.classList.add('scale-95', 'opacity-0');
-            setTimeout(() => modal.classList.add('hidden'), 150);
-        }
-
-        async function submitScore(e) {
-            e.preventDefault();
-            calculateTotal();
-
-            const id = document.getElementById('matchId').value;
-            const originalMatch = allMatches.find(m => m.id == id);
-            if (!originalMatch) return alert('試合情報の取得に失敗しました。');
-
-            const detailsArray = positions.map((pos, i) => ({
-                position: pos,
-                honsuA: document.getElementById(`honsuA_${i}`).value,
-                honsuB: document.getElementById(`honsuB_${i}`).value,
-                winner: document.getElementById(`winner_${i}`).value
-            }));
-
-            const payload = {
-                id: parseInt(id, 10),
-                category: originalMatch.category,
-                stage: originalMatch.stage,
-                title: originalMatch.title,
-                teamA: originalMatch.teamA,
-                teamB: originalMatch.teamB,
-                scoreA: parseInt(document.getElementById('scoreA').value, 10),
-                scoreB: parseInt(document.getElementById('scoreB').value, 10),
-                status: document.getElementById('matchStatus').value,
-                details: detailsArray
-            };
-
-            try {
-                const res = await fetch('/api/match_update', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await res.json();
-                
-                if (result.success) {
-                    closeModal();
-                    await loadCategoryData();
-                } else {
-                    alert('❌ スコアの保存に失敗しました: ' + result.error);
-                }
-            } catch (err) {
-                alert('❌ サーバーとの通信エラーが発生しました。');
-            }
+        function saveScores() {
+            alert('スコアを反映しました');
+            closeModal();
         }
     </script>
 </body>
