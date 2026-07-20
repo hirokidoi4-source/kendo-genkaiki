@@ -155,42 +155,55 @@
         let activePosIndex = null;
         let activeSide = null;
 
-        // ★可変リーグ対応のスタイリッシュなテーマカラー配列（カード背景・バッジ・アクセント）
         const colorThemes = [
             { headerBg: 'bg-indigo-600', badge: 'bg-indigo-100 text-indigo-800 border-indigo-300', cardBg: 'bg-indigo-50/40 border-indigo-200' },
             { headerBg: 'bg-emerald-600', badge: 'bg-emerald-100 text-emerald-800 border-emerald-300', cardBg: 'bg-emerald-50/40 border-emerald-200' },
             { headerBg: 'bg-amber-600', badge: 'bg-amber-100 text-amber-800 border-amber-300', cardBg: 'bg-amber-50/40 border-amber-200' },
             { headerBg: 'bg-rose-600', badge: 'bg-rose-100 text-rose-800 border-rose-300', cardBg: 'bg-rose-50/40 border-rose-200' },
             { headerBg: 'bg-sky-600', badge: 'bg-sky-100 text-sky-800 border-sky-300', cardBg: 'bg-sky-50/40 border-sky-200' },
-            { headerBg: 'bg-purple-600', badge: 'bg-purple-100 text-purple-800 border-purple-300', cardBg: 'bg-purple-50/40 border-purple-200' },
+            { headerBg: 'bg-purple-600', badge: 'bg-purple-100 text-purple-800 border-purple-200', cardBg: 'bg-purple-50/40 border-purple-200' },
             { headerBg: 'bg-teal-600', badge: 'bg-teal-100 text-teal-800 border-teal-300', cardBg: 'bg-teal-50/40 border-teal-200' },
             { headerBg: 'bg-orange-600', badge: 'bg-orange-100 text-orange-800 border-orange-300', cardBg: 'bg-orange-50/40 border-orange-200' }
         ];
 
         // 試合データ取得
         async function loadMatches() {
+            let rawData = [];
             try {
                 const res = await fetch('/api/matches');
                 if(!res.ok) throw new Error('通信失敗');
-                const data = await res.json();
-                matchesList = data.map((m, i) => parseMatchData(m, i));
+                rawData = await res.json();
             } catch (e) {
                 const saved = localStorage.getItem('kendo_matches');
                 if (saved) {
-                    matchesList = JSON.parse(saved);
+                    rawData = JSON.parse(saved);
                 } else {
-                    matchesList = generateFallbackData();
+                    rawData = generateFallbackData();
                 }
             }
+
+            // ★重複データの排除＆一意化処理
+            const uniqueMap = new Map();
+            rawData.forEach((m, i) => {
+                const parsed = parseMatchData(m, i);
+                // リーグ名＋対戦相手2つのペアキー（順不同）を作成して重複検出
+                const teamPairKey = [parsed.redTeam, parsed.whiteTeam].sort().join(' vs ');
+                const uniqueKey = `${parsed.league}_${teamPairKey}_${parsed.title}`;
+                
+                if (!uniqueMap.has(uniqueKey)) {
+                    uniqueMap.set(uniqueKey, parsed);
+                }
+            });
+
+            matchesList = Array.from(uniqueMap.values());
             renderMatchGroups();
         }
 
-        // データの解析＆リーグ名・タイトル抽出の最適化
+        // データの解析＆リーグ名・タイトル抽出
         function parseMatchData(m, index) {
-            let league = m.league || m.league_name || m.stage || m.group_name || m.group || '予選 Aリーグ';
+            let league = m.league || m.league_name || m.stage || m.group_name || m.group || 'Aリーグ';
             let title = m.title || m.match_name || `第${index + 1}試合`;
             
-            // 例: "Hリーグ 第3試合" などの表記から純粋なリーグ名を安全に抽出
             if (m.title && (m.title.includes('リーグ') || m.title.includes('回戦') || m.title.includes('トーナメント'))) {
                 const parts = m.title.split(' ');
                 if (parts.length > 1) {
@@ -221,29 +234,48 @@
         }
 
         function generateFallbackData() {
-            const groups = ['Aリーグ', 'Bリーグ', 'Cリーグ', 'Dリーグ', 'Eリーグ', '決勝トーナメント'];
-            const sampleTeams = ['春日市筑葉会', '大野東剣道', '太宰府振武会', '須恵剣友会', '清流館', '松武館'];
+            const groups = ['Aリーグ', 'Bリーグ', 'Cリーグ', 'Dリーグ', 'Eリーグ', 'Fリーグ', 'Gリーグ', 'Hリーグ', 'Iリーグ'];
+            const sampleTeams = [
+                ['春日市筑葉会', '大野東剣道スポーツ少年団', '太宰府振武会'],
+                ['松武館', '北部少年剣道クラブ', '二天会道場'],
+                ['須恵剣友会', '清流館', '上陽町少年剣道クラブ'],
+                ['西牟田少年剣道クラブ', '黒津少年剣道クラブ', '志免心正会'],
+                ['下妻剣道スポーツ少年団', '衛心館', '玄辰館道場'],
+                ['上陽道場', '仁保剣友会', '大野北剣道スポーツ少年団'],
+                ['篠栗少年剣道部', '宮竹少年剣道クラブ', '城島少年剣道部'],
+                ['福岡一信館', '大橋一信館', '福岡十生館'],
+                ['黒崎剣友会', '小倉正剣会', '八幡剣友会']
+            ];
+
             let result = [];
             let count = 1;
 
-            groups.forEach((g) => {
-                for(let i = 0; i < 3; i++) {
+            groups.forEach((g, idx) => {
+                const teams = sampleTeams[idx % sampleTeams.length];
+                // 3チーム総当たり：全3試合
+                const roundMatches = [
+                    { title: '第1試合', redTeam: teams[0], whiteTeam: teams[1] },
+                    { title: '第2試合', redTeam: teams[1], whiteTeam: teams[2] },
+                    { title: '第3試合', redTeam: teams[0], whiteTeam: teams[2] }
+                ];
+
+                roundMatches.forEach(rm => {
                     result.push({
                         id: count,
                         league: g,
-                        title: `第${i + 1}試合`,
-                        redTeam: sampleTeams[(i + count) % sampleTeams.length],
-                        whiteTeam: sampleTeams[(i + count + 2) % sampleTeams.length],
+                        title: rm.title,
+                        redTeam: rm.redTeam,
+                        whiteTeam: rm.whiteTeam,
                         isFinished: false,
                         positions: positions.map(p => ({ position: p, red: [], white: [], result: '引分' }))
                     });
                     count++;
-                }
+                });
             });
             return result;
         }
 
-        // ★グループ分離＆色分け＆決勝トーナメント非表示ロジック
+        // ★グループ描画 & 試合数の正確化
         function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
@@ -251,7 +283,6 @@
                 return;
             }
 
-            // 1. 予選とトーナメントを明確に分類
             const qualGrouped = {};
             const tourneyMatches = [];
 
@@ -260,7 +291,6 @@
                 const leagueStr = String(m.league);
                 const titleStr = String(m.title);
 
-                // トーナメント系キーワードの厳密判定
                 const isTourney = leagueStr.includes('トーナメント') || leagueStr.includes('回戦') || 
                                  titleStr.includes('トーナメント') || titleStr.includes('回戦');
 
@@ -272,10 +302,8 @@
                 }
             });
 
-            // 予選リーグ名を A -> Z 順に昇順ソート
             const qualLeagues = Object.keys(qualGrouped).sort((a, b) => a.localeCompare(b, 'ja'));
 
-            // ★予選全試合が完了しているか判定
             let allQualFinished = true;
             let totalQualMatches = 0;
             let finishedQualMatches = 0;
@@ -294,10 +322,14 @@
 
             let htmlContent = '';
 
-            // ① 予選リーグの描画（色分けカード）
+            // ① 予選リーグの描画（各3試合ずつ正しく描画）
             qualLeagues.forEach((leagueName, idx) => {
-                const matches = qualGrouped[leagueName];
-                const theme = colorThemes[idx % colorThemes.length]; // リーグ毎のカラー決定
+                let matches = qualGrouped[leagueName];
+                
+                // 試合順（第1試合 -> 第2試合 -> 第3試合）にきれいに並び替え
+                matches.sort((a, b) => a.title.localeCompare(b.title, 'ja', { numeric: true }));
+
+                const theme = colorThemes[idx % colorThemes.length];
 
                 htmlContent += `
                     <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
@@ -315,10 +347,9 @@
                 `;
             });
 
-            // ② 決勝トーナメント（予選全終了まで完全に隠す）
+            // ② 決勝トーナメント（全完了後に公開）
             if (tourneyMatches.length > 0) {
                 if (allQualFinished && totalQualMatches > 0) {
-                    // 予選全完了時のみ表示！
                     htmlContent += `
                         <div class="bg-amber-50/80 rounded-2xl p-4 sm:p-5 shadow-md border-2 border-amber-300">
                             <div class="flex items-center gap-2 mb-4 border-b border-amber-200 pb-3">
@@ -333,7 +364,6 @@
                         </div>
                     `;
                 } else {
-                    // 予選未終了時のロック案内カード
                     htmlContent += `
                         <div class="bg-slate-200/60 border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center space-y-2">
                             <div class="text-3xl">🔒</div>
@@ -347,7 +377,6 @@
             container.innerHTML = htmlContent;
         }
 
-        // 単一試合カードHTMLの生成
         function renderMatchCardHtml(m, theme) {
             const summary = calculateTeamSummary(m.positions);
             const isFinished = m.isFinished || (summary.status !== '未実施' && summary.hasInput);
