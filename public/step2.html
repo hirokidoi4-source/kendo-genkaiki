@@ -194,10 +194,10 @@
             document.getElementById('saveBtn').addEventListener('click', async () => {
                 const category = document.getElementById('categorySelect').value;
                 const matches = [];
+                const blocksData = [];
                 
                 // 画面上に動的生成されているすべてのリーグリストを取得
                 const leagueLists = document.querySelectorAll('#dynamicLeagueWrapper .sortable-list');
-                let totalTeamsCount = 0;
 
                 leagueLists.forEach(list => {
                     const leagueName = list.getAttribute('data-leaguename');
@@ -208,21 +208,23 @@
                         organization: li.getAttribute('data-org')
                     }));
 
-                    totalTeamsCount += teamsInLeague.length;
                     if (teamsInLeague.length === 0) return;
 
+                    // step3_visual用のブロック構成データを作成
+                    blocksData.push({
+                        league: leagueName,
+                        teams: teamsInLeague.map(t => t.team_name)
+                    });
+
                     // チーム数をもとに、不戦勝枠を追加するかと進出枠数を割り出す
-                    let targetSize = 3;
-                    if (teamsInLeague.length > 3) {
-                        targetSize = 4;
-                    }
+                    let targetSize = teamsInLeague.length > 3 ? 4 : 3;
                     
                     // 不戦勝枠でサイズを穴埋め
                     while (teamsInLeague.length < targetSize) {
                         teamsInLeague.push({ team_name: '（不戦勝枠）', organization: 'なし' });
                     }
 
-                    // 4チームなら2枠進出、3チームなら1枠進出とする 🎯
+                    // 4チームなら2枠進出、3チームなら1枠進出とする
                     const maxPromoted = targetSize === 4 ? 2 : 1;
 
                     let matchCount = 1;
@@ -255,6 +257,93 @@
                         }
                     }
                 });
+
+                if (matches.length === 0) {
+                    alert('配置されたチームがありません。');
+                    return;
+                }
+
+                if (!confirm(`組み替えた配置をもとに予選リーグの総当たり表（計 ${matches.length} 試合）を確定して保存しますか？`)) {
+                    return;
+                }
+
+                // ブラウザのlocalStorageにも部門別キーで保存（フロント連動の確実化）
+                localStorage.setItem(`kendo_league_blocks_${category}`, JSON.stringify(blocksData));
+                localStorage.setItem(`kendo_matches_${category}`, JSON.stringify(matches));
+
+                try {
+                    const btn = document.getElementById('saveBtn');
+                    btn.innerText = '保存中...';
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+                    // blocks も含めてサーバーへ送信
+                    const res = await fetch('/api/tournament/save_league', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ category, matches, blocks: blocksData })
+                    });
+                    const result = await res.json();
+                    
+                    if (result.success) {
+                        alert('🎉 予選リーグの組み合わせを確定しました！結果入力画面へ移動します。');
+                        window.location.href = '/step3_visual.html';
+                    } else {
+                        alert('❌ 保存エラー: ' + result.error);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('⚠️ サーバー通信に失敗しましたが、ローカルデータを更新して結果入力画面へ移動します。');
+                    window.location.href = '/step3_visual.html';
+                } finally {
+                    const btn = document.getElementById('saveBtn');
+                    btn.innerText = '組み合わせを確定して保存';
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            });
+
+    if (matches.length === 0) {
+        alert('配置されたチームがありません。');
+        return;
+    }
+
+    if (!confirm(`組み替えた配置をもとに予選リーグの総当たり表（計 ${matches.length} 試合）を確定して保存しますか？`)) {
+        return;
+    }
+
+    // 👈 【追加】ブラウザのlocalStorageにも部門別キーで保存（フロント連動の確実化）
+    localStorage.setItem(`kendo_league_blocks_${category}`, JSON.stringify(blocksData));
+    localStorage.setItem(`kendo_matches_${category}`, JSON.stringify(matches));
+
+    try {
+        const btn = document.getElementById('saveBtn');
+        btn.innerText = '保存中...';
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+        // 👈 【補強】blocks も含めてサーバーへ送信
+        const res = await fetch('/api/tournament/save_league', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category, matches, blocks: blocksData })
+        });
+        const result = await res.json();
+        
+        if (result.success) {
+          alert('🎉 予選リーグの組み合わせを確定しました！結果入力画面へ移動します。');
+          window.location.href = '/step3_visual.html';
+        } else {
+            alert('❌ 保存エラー: ' + result.error);
+        }
+    } catch (err) {
+        console.error(err);
+        // 通信エラー時でもローカル側には保存されているため遷移を許容
+        alert('⚠️ サーバー通信に失敗しましたが、ローカルデータを更新して結果入力画面へ移動します。');
+        window.location.href = '/step3_visual.html';
+    } finally {
+        const btn = document.getElementById('saveBtn');
+        btn.innerText = '組み合わせを確定して保存';
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+});
 
                 if (matches.length === 0) {
                     alert('配置されたチームがありません。');
