@@ -28,7 +28,7 @@
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans p-2 sm:p-4 md:p-8">
 
-    <div class="max-w-7xl mx-auto space-y-6">
+    <div class="max-w-7xl mx-auto space-y-4">
         <!-- ヘッダー -->
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
             <div>
@@ -43,8 +43,17 @@
             </div>
         </header>
 
+        <!-- ★部門切り替えタブ（常時固定表示） -->
+        <div class="bg-white p-2.5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-2 items-center">
+            <span class="text-xs font-black text-slate-400 px-2">部門選択:</span>
+            <button onclick="switchCategory('小学生低学年')" id="btn-小学生低学年" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">① 小学生低学年</button>
+            <button onclick="switchCategory('小学生高学年')" id="btn-小学生高学年" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">② 小学生高学年</button>
+            <button onclick="switchCategory('中学生団体')" id="btn-中学生団体" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">③ 中学生団体</button>
+            <button onclick="switchCategory('中学生女子団体')" id="btn-中学生女子団体" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">④ 中学生女子団体</button>
+        </div>
+
         <!-- 試合一覧コンテナ -->
-        <div id="matchesContainer" class="space-y-8">
+        <div id="matchesContainer" class="space-y-8 pt-2">
             <div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">対戦データを整理して読み込み中...</div>
         </div>
     </div>
@@ -52,7 +61,6 @@
     <!-- 団体戦結果入力モーダル -->
     <div id="scoreModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
-            
             <div class="bg-indigo-900 text-white p-3 sm:p-4 flex justify-between items-center shrink-0">
                 <div>
                     <span id="modalGroupBadge" class="text-xs bg-indigo-700 px-2.5 py-0.5 rounded-full text-indigo-100 font-bold">予選 Aリーグ</span>
@@ -105,7 +113,6 @@
     <div id="partSelectDialog" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-3 hidden">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4 space-y-3">
             <h4 id="dialogTitle" class="font-bold text-sm text-center text-slate-800">取得部位を選択</h4>
-            
             <div>
                 <div class="text-[11px] font-bold text-amber-600 mb-1">▼ 先取（1本目）※初本◯付与</div>
                 <div class="grid grid-cols-4 gap-1.5">
@@ -115,7 +122,6 @@
                     <button onclick="applyPart('ツ◯')" class="py-2 bg-amber-50 border border-amber-200 text-amber-900 font-bold rounded-lg text-xs">ツ◯</button>
                 </div>
             </div>
-
             <div>
                 <div class="text-[11px] font-bold text-indigo-600 mb-1">▼ 通常（2本目以降）</div>
                 <div class="grid grid-cols-4 gap-1.5">
@@ -125,7 +131,6 @@
                     <button onclick="applyPart('ツ')" class="py-2 bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold rounded-lg text-xs">ツ</button>
                 </div>
             </div>
-
             <div>
                 <div class="text-[11px] font-bold text-slate-600 mb-1">▼ その他</div>
                 <div class="grid grid-cols-3 gap-1.5">
@@ -134,13 +139,14 @@
                     <button onclick="applyPart('CLEAR')" class="py-2 bg-slate-100 border border-slate-300 text-slate-600 font-bold rounded-lg text-xs">クリア</button>
                 </div>
             </div>
-
             <button onclick="closePartDialog()" class="w-full py-2 bg-slate-200 text-slate-600 font-bold rounded-lg text-xs mt-1">閉じる</button>
         </div>
     </div>
 
     <script>
         const positions = ['先鋒', '次鋒', '中堅', '副将', '大将'];
+        const categoryList = ['小学生低学年', '小学生高学年', '中学生団体', '中学生女子団体'];
+        let currentCategory = '小学生低学年';
         let matchesList = [];
         let currentMatchIndex = null;
         let activePosIndex = null;
@@ -152,10 +158,47 @@
             { headerBg: 'bg-amber-600', badge: 'bg-amber-100 text-amber-800 border-amber-300', cardBg: 'bg-amber-50/40 border-amber-200' },
             { headerBg: 'bg-rose-600', badge: 'bg-rose-100 text-rose-800 border-rose-200', cardBg: 'bg-rose-50/40 border-rose-200' },
             { headerBg: 'bg-sky-600', badge: 'bg-sky-100 text-sky-800 border-sky-300', cardBg: 'bg-sky-50/40 border-sky-200' },
-            { headerBg: 'bg-purple-600', badge: 'bg-purple-100 text-purple-800 border-purple-300', cardBg: 'bg-purple-50/40 border-purple-200' },
+            { headerBg: 'bg-purple-600', badge: 'bg-purple-100 text-purple-800 border-purple-200', cardBg: 'bg-purple-50/40 border-purple-200' },
             { headerBg: 'bg-teal-600', badge: 'bg-teal-100 text-teal-800 border-teal-300', cardBg: 'bg-teal-50/40 border-teal-200' },
             { headerBg: 'bg-orange-600', badge: 'bg-orange-100 text-orange-800 border-orange-300', cardBg: 'bg-orange-50/40 border-orange-200' }
         ];
+
+        // 初期化：URLまたは保存データから部門決定
+        function initCategory() {
+            const params = new URLSearchParams(window.location.search);
+            const urlCat = params.get('category') || params.get('dept') || params.get('class');
+            if (urlCat && categoryList.includes(decodeURIComponent(urlCat))) {
+                currentCategory = decodeURIComponent(urlCat);
+            } else {
+                const savedCat = localStorage.getItem('kendo_current_category');
+                if (savedCat && categoryList.includes(savedCat)) {
+                    currentCategory = savedCat;
+                }
+            }
+            updateCategoryTabUi();
+        }
+
+        // タブ見た目の更新
+        function updateCategoryTabUi() {
+            categoryList.forEach(cat => {
+                const btn = document.getElementById(`btn-${cat}`);
+                if (btn) {
+                    if (cat === currentCategory) {
+                        btn.className = "cat-btn px-4 py-2 rounded-xl font-black text-xs sm:text-sm transition bg-indigo-600 text-white shadow-sm";
+                    } else {
+                        btn.className = "cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition bg-slate-100 text-slate-600 hover:bg-slate-200";
+                    }
+                }
+            });
+        }
+
+        // 部門切り替え
+        function switchCategory(cat) {
+            currentCategory = cat;
+            localStorage.setItem('kendo_current_category', cat);
+            updateCategoryTabUi();
+            loadMatches();
+        }
 
         async function loadMatches() {
             let savedScoresMap = new Map();
@@ -171,14 +214,15 @@
 
             rawMatches.forEach((m, i) => {
                 const parsed = parseMatchData(m, i);
-                const key1 = `${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`;
-                const key2 = `${parsed.league}_${parsed.whiteTeam}_${parsed.redTeam}`;
+                const matchCat = m.category || currentCategory;
+                const key1 = `${matchCat}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`;
+                const key2 = `${matchCat}_${parsed.league}_${parsed.whiteTeam}_${parsed.redTeam}`;
                 savedScoresMap.set(key1, parsed);
                 savedScoresMap.set(key2, parsed);
-                if (parsed.id) savedScoresMap.set(String(parsed.id), parsed);
+                if (parsed.id) savedScoresMap.set(`${matchCat}_${parsed.id}`, parsed);
             });
 
-            let leagueBlocks = getLeagueBlocksFromStorage();
+            let leagueBlocks = getLeagueBlocksFromStorage(currentCategory);
             let cleanMatches = [];
 
             leagueBlocks.forEach(block => {
@@ -191,12 +235,13 @@
                         for (let j = i + 1; j < teams.length; j++) {
                             const teamA = teams[i];
                             const teamB = teams[j];
-                            const lookupKey = `${leagueName}_${teamA}_${teamB}`;
+                            const lookupKey = `${currentCategory}_${leagueName}_${teamA}_${teamB}`;
                             const matchId = `${leagueName}_m${matchIndex}`;
-                            const scoreData = savedScoresMap.get(lookupKey) || savedScoresMap.get(matchId);
+                            const scoreData = savedScoresMap.get(lookupKey) || savedScoresMap.get(`${currentCategory}_${matchId}`);
 
                             if (scoreData) {
                                 scoreData.id = matchId;
+                                scoreData.category = currentCategory;
                                 scoreData.league = leagueName;
                                 scoreData.title = `第${matchIndex}試合`;
                                 scoreData.redTeam = teamA;
@@ -205,6 +250,7 @@
                             } else {
                                 cleanMatches.push({
                                     id: matchId,
+                                    category: currentCategory,
                                     league: leagueName,
                                     title: `第${matchIndex}試合`,
                                     redTeam: teamA,
@@ -223,8 +269,8 @@
             renderMatchGroups();
         }
 
-        function getLeagueBlocksFromStorage() {
-            const saved = localStorage.getItem('kendo_league_blocks') || localStorage.getItem('kendo_groups');
+        function getLeagueBlocksFromStorage(cat) {
+            const saved = localStorage.getItem(`kendo_league_blocks_${cat}`) || localStorage.getItem('kendo_league_blocks');
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
@@ -266,6 +312,7 @@
 
             return {
                 id: m.id || `${league}_m${index + 1}`,
+                category: m.category || currentCategory,
                 league,
                 title,
                 redTeam,
@@ -278,7 +325,7 @@
         function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
-                container.innerHTML = '<div class="text-center py-8 text-slate-400 font-bold col-span-full">登録されている対戦がありません</div>';
+                container.innerHTML = '<div class="text-center py-8 text-slate-400 font-bold col-span-full bg-white rounded-2xl border">登録されている対戦がありません</div>';
                 return;
             }
 
@@ -303,7 +350,7 @@
                         <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
                             <div class="flex items-center gap-2">
                                 <span class="w-3.5 h-6 ${theme.headerBg} rounded-full inline-block"></span>
-                                <h3 class="text-lg sm:text-xl font-black text-slate-900">${leagueName}</h3>
+                                <h3 class="text-lg sm:text-xl font-black text-slate-900">${leagueName} <span class="text-xs text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full font-bold ml-1 border border-indigo-100">${currentCategory}</span></h3>
                             </div>
                             <span class="text-xs font-bold ${theme.badge} px-3 py-1 rounded-full border">${matches.length}試合</span>
                         </div>
@@ -368,7 +415,7 @@
             currentMatchIndex = index;
             const match = matchesList[index];
 
-            document.getElementById('modalGroupBadge').innerText = match.league;
+            document.getElementById('modalGroupBadge').innerText = `${currentCategory} ${match.league}`;
             document.getElementById('modalMatchTitle').innerText = match.title;
             document.getElementById('modalRedTeam').innerText = match.redTeam;
             document.getElementById('modalWhiteTeam').innerText = match.whiteTeam;
@@ -523,32 +570,22 @@
             renderPositionRows();
         }
 
-        // ★キー判定を共通化してサーバー＆ローカルに保存
         async function saveScores() {
             const match = matchesList[currentMatchIndex];
             const summary = calculateTeamSummary(match.positions);
             match.isFinished = true;
             match.teamResult = summary.status;
-            match.redWins = summary.redWins;
-            match.whiteWins = summary.whiteWins;
-            match.redTotalPts = summary.redTotalPts;
-            match.whiteTotalPts = summary.whiteTotalPts;
 
             const payload = {
                 id: match.id,
+                category: currentCategory,
                 league: match.league,
                 title: match.title,
                 redTeam: match.redTeam,
                 whiteTeam: match.whiteTeam,
-                teamA: match.redTeam,
-                teamB: match.whiteTeam,
                 positions: match.positions,
                 isFinished: true,
-                teamResult: summary.status,
-                redWins: summary.redWins,
-                whiteWins: summary.whiteWins,
-                redTotalPts: summary.redTotalPts,
-                whiteTotalPts: summary.whiteTotalPts
+                teamResult: summary.status
             };
 
             try {
@@ -561,23 +598,24 @@
                 console.log('Local保存');
             }
 
-            // localStorageの保存データも最新化
             let saved = [];
             try {
                 saved = JSON.parse(localStorage.getItem('kendo_matches')) || [];
             } catch(e){}
             
-            const idx = saved.findIndex(m => m.id === match.id || (m.league === match.league && m.title === match.title));
+            const idx = saved.findIndex(m => m.id === match.id && (m.category === currentCategory || !m.category));
             if (idx >= 0) saved[idx] = payload;
             else saved.push(payload);
 
             localStorage.setItem('kendo_matches', JSON.stringify(saved));
 
-            alert(`【${summary.status}】で確定し、閲覧画面用データへ反映しました！`);
+            alert(`【${currentCategory} ${match.league} ${summary.status}】で確定しました！`);
             closeModal();
             renderMatchGroups();
         }
 
+        // 実行開始
+        initCategory();
         loadMatches();
     </script>
 </body>
