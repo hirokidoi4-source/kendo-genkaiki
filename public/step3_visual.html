@@ -166,65 +166,52 @@
             { headerBg: 'bg-orange-600', badge: 'bg-orange-100 text-orange-800 border-orange-300', cardBg: 'bg-orange-50/40 border-orange-200' }
         ];
 
-        // 試合データ取得＆正確な総当たり試合数の構築
+        // 試合データ取得＆step2.htmlのブロックデータに完全同期させて試合カードを生成
         async function loadMatches() {
-            let rawData = [];
+            let savedScoresMap = new Map();
+            let rawMatches = [];
+
+            // スコア保存データのロード
             try {
                 const res = await fetch('/api/matches');
-                if(!res.ok) throw new Error('通信失敗');
-                rawData = await res.json();
+                if (res.ok) {
+                    rawMatches = await res.json();
+                }
             } catch (e) {
                 const saved = localStorage.getItem('kendo_matches');
-                if (saved) {
-                    rawData = JSON.parse(saved);
-                } else {
-                    rawData = generateFallbackData();
-                }
+                if (saved) rawMatches = JSON.parse(saved);
             }
 
-            // 1. 各リーグごとの「所属チームリスト」を正しく抽出
-            const leagueTeamsMap = new Map();
-            const tourneyList = [];
-
-            rawData.forEach((m, i) => {
+            // 保存済みスコア結果をマッピング（キー: リーグ名_赤チーム_白チーム）
+            rawMatches.forEach((m, i) => {
                 const parsed = parseMatchData(m, i);
-                const league = parsed.league;
-
-                if (league.includes('トーナメント') || parsed.title.includes('トーナメント')) {
-                    tourneyList.push(parsed);
-                } else {
-                    if (!leagueTeamsMap.has(league)) {
-                        leagueTeamsMap.set(league, new Set());
-                    }
-                    if (parsed.redTeam && parsed.redTeam !== '赤チーム') leagueTeamsMap.get(league).add(parsed.redTeam);
-                    if (parsed.whiteTeam && parsed.whiteTeam !== '白チーム') leagueTeamsMap.get(league).add(parsed.whiteTeam);
-                }
+                const key1 = `${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`;
+                const key2 = `${parsed.league}_${parsed.whiteTeam}_${parsed.redTeam}`;
+                savedScoresMap.set(key1, parsed);
+                savedScoresMap.set(key2, parsed);
             });
 
-            // 2. リーグごとに所属チームの「総当たり対戦カード」のみを厳密生成
+            // step2.htmlで設定された正確なリーグチーム構造を構築
+            let leagueBlocks = getLeagueBlocksFromStorage();
             let cleanMatches = [];
 
-            leagueTeamsMap.forEach((teamSet, leagueName) => {
-                const teams = Array.from(teamSet);
-                const existingLeagueMatches = rawData.map((m, i) => parseMatchData(m, i)).filter(m => m.league === leagueName);
+            leagueBlocks.forEach(block => {
+                const leagueName = block.league;
+                const teams = block.teams || [];
 
                 if (teams.length >= 2) {
-                    // 総当たり組み合わせ（3チームなら3試合、4チームなら6試合）
                     let matchIndex = 1;
+                    // 総当たり組み合わせ（3チームならぴったり3試合、4チームならぴったり6試合）
                     for (let i = 0; i < teams.length; i++) {
                         for (let j = i + 1; j < teams.length; j++) {
                             const teamA = teams[i];
                             const teamB = teams[j];
+                            const lookupKey = `${leagueName}_${teamA}_${teamB}`;
+                            const scoreData = savedScoresMap.get(lookupKey);
 
-                            // 既存の入力済み結果データがあればそれを探して引き継ぐ
-                            const found = existingLeagueMatches.find(m => 
-                                (m.redTeam === teamA && m.whiteTeam === teamB) || 
-                                (m.redTeam === teamB && m.whiteTeam === teamA)
-                            );
-
-                            if (found) {
-                                found.title = `第${matchIndex}試合`;
-                                cleanMatches.push(found);
+                            if (scoreData) {
+                                scoreData.title = `第${matchIndex}試合`;
+                                cleanMatches.push(scoreData);
                             } else {
                                 cleanMatches.push({
                                     id: `${leagueName}_${matchIndex}`,
@@ -239,33 +226,45 @@
                             matchIndex++;
                         }
                     }
-                } else {
-                    // バックアップ：一意化のみ行ってそのまま使用
-                    const uniqueMap = new Map();
-                    existingLeagueMatches.forEach(m => {
-                        const pairKey = [m.redTeam, m.whiteTeam].sort().join(' vs ');
-                        if (!uniqueMap.has(pairKey)) uniqueMap.set(pairKey, m);
-                    });
-                    cleanMatches.push(...Array.from(uniqueMap.values()));
                 }
             });
 
-            matchesList = [...cleanMatches, ...tourneyList];
+            matchesList = cleanMatches;
             renderMatchGroups();
         }
 
-        // データの解析
+        // step2.htmlのブロック構造を取得（無ければスクショ2枚目の構成をデフォルト適用）
+        function getLeagueBlocksFromStorage() {
+            const saved = localStorage.getItem('kendo_league_blocks') || localStorage.getItem('kendo_groups');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        return parsed.map(b => ({
+                            league: b.league || b.name || b.league_name || 'Aリーグ',
+                            teams: (b.teams || b.members || []).map(t => typeof t === 'string' ? t : (t.name || t.team_name))
+                        }));
+                    }
+                } catch(e) {}
+            }
+
+            // フォールバック（スクショ2枚目の完全正確な3チームずつ構成）
+            return [
+                { league: 'Aリーグ', teams: ['春日市筑葉会', '大野東剣道スポーツ少年団', '太宰府振武会'] },
+                { league: 'Bリーグ', teams: ['松武館', '北部少年剣道クラブ', '二天会道場'] },
+                { league: 'Cリーグ', teams: ['須恵剣友会', '清流館', '上陽町少年剣道クラブ'] },
+                { league: 'Dリーグ', teams: ['西牟田少年剣道クラブ', '黒津少年剣道クラブ', '志免心正会'] },
+                { league: 'Eリーグ', teams: ['下妻剣道スポーツ少年団', '衛心館', '玄辰館道場'] },
+                { league: 'Fリーグ', teams: ['上陽道場', '仁保剣友会', '大野北剣道スポーツ少年団'] },
+                { league: 'Gリーグ', teams: ['篠栗少年剣道部', '宮竹少年剣道クラブ', '城島少年剣道部'] },
+                { league: 'Hリーグ', teams: ['福岡一信館', '大橋一信館', '福岡十生館'] },
+                { league: 'Iリーグ', teams: ['黒崎剣友会', '小倉正剣会', '八幡剣友会'] }
+            ];
+        }
+
         function parseMatchData(m, index) {
             let league = m.league || m.league_name || m.stage || m.group_name || m.group || 'Aリーグ';
             let title = m.title || m.match_name || `第${index + 1}試合`;
-            
-            if (m.title && (m.title.includes('リーグ') || m.title.includes('回戦') || m.title.includes('トーナメント'))) {
-                const parts = m.title.split(' ');
-                if (parts.length > 1) {
-                    league = parts[0];
-                    title = parts.slice(1).join(' ');
-                }
-            }
 
             const redTeam = m.teamA || m.team_a || m.team1 || m.team1_name || m.red_team || m.redTeam || (m.teams && m.teams[0]) || '赤チーム';
             const whiteTeam = m.teamB || m.team_b || m.team2 || m.team2_name || m.white_team || m.whiteTeam || (m.teams && m.teams[1]) || '白チーム';
@@ -286,47 +285,6 @@
                 isFinished: m.isFinished || false,
                 positions: m.positions || posData
             };
-        }
-
-        function generateFallbackData() {
-            const groups = ['Aリーグ', 'Bリーグ', 'Cリーグ', 'Dリーグ', 'Eリーグ', 'Fリーグ', 'Gリーグ', 'Hリーグ', 'Iリーグ'];
-            const sampleTeams = [
-                ['春日市筑葉会', '大野東剣道スポーツ少年団', '太宰府振武会'],
-                ['松武館', '北部少年剣道クラブ', '二天会道場'],
-                ['須恵剣友会', '清流館', '上陽町少年剣道クラブ'],
-                ['西牟田少年剣道クラブ', '黒津少年剣道クラブ', '志免心正会'],
-                ['下妻剣道スポーツ少年団', '衛心館', '玄辰館道場'],
-                ['上陽道場', '仁保剣友会', '大野北剣道スポーツ少年団'],
-                ['篠栗少年剣道部', '宮竹少年剣道クラブ', '城島少年剣道部'],
-                ['福岡一信館', '大橋一信館', '福岡十生館'],
-                ['黒崎剣友会', '小倉正剣会', '八幡剣友会']
-            ];
-
-            let result = [];
-            let count = 1;
-
-            groups.forEach((g, idx) => {
-                const teams = sampleTeams[idx % sampleTeams.length];
-                const roundMatches = [
-                    { title: '第1試合', redTeam: teams[0], whiteTeam: teams[1] },
-                    { title: '第2試合', redTeam: teams[1], whiteTeam: teams[2] },
-                    { title: '第3試合', redTeam: teams[0], whiteTeam: teams[2] }
-                ];
-
-                roundMatches.forEach(rm => {
-                    result.push({
-                        id: count,
-                        league: g,
-                        title: rm.title,
-                        redTeam: rm.redTeam,
-                        whiteTeam: rm.whiteTeam,
-                        isFinished: false,
-                        positions: positions.map(p => ({ position: p, red: [], white: [], result: '引分' }))
-                    });
-                    count++;
-                });
-            });
-            return result;
         }
 
         // グループ描画
@@ -376,7 +334,7 @@
 
             let htmlContent = '';
 
-            // ① 予選リーグ描画（正しく計算された総当たり試合数のみ）
+            // ① 予選リーグ描画（3チーム＝正確に3試合、4チーム＝正確に6試合）
             qualLeagues.forEach((leagueName, idx) => {
                 let matches = qualGrouped[leagueName];
                 matches.sort((a, b) => a.title.localeCompare(b.title, 'ja', { numeric: true }));
