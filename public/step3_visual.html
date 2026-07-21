@@ -43,7 +43,7 @@
             </div>
         </header>
 
-        <!-- リーグ別・試合一覧コンテナ -->
+        <!-- 試合一覧コンテナ -->
         <div id="matchesContainer" class="space-y-8">
             <div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">対戦データを整理して読み込み中...</div>
         </div>
@@ -53,7 +53,6 @@
     <div id="scoreModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
             
-            <!-- モーダルヘッダー -->
             <div class="bg-indigo-900 text-white p-3 sm:p-4 flex justify-between items-center shrink-0">
                 <div>
                     <span id="modalGroupBadge" class="text-xs bg-indigo-700 px-2.5 py-0.5 rounded-full text-indigo-100 font-bold">予選 Aリーグ</span>
@@ -62,10 +61,7 @@
                 <button onclick="closeModal()" class="text-slate-300 hover:text-white text-2xl font-bold px-2">&times;</button>
             </div>
 
-            <!-- モーダルボディ -->
             <div class="p-3 sm:p-5 modal-scroll space-y-4">
-                
-                <!-- 対戦チームヘッダー & サマリー -->
                 <div class="bg-slate-100 rounded-xl p-3 border border-slate-200">
                     <div class="flex justify-between items-center text-center">
                         <div class="w-5/12">
@@ -83,7 +79,6 @@
                     </div>
                 </div>
 
-                <!-- ポジション別対戦表 -->
                 <div class="overflow-x-auto">
                     <table class="w-full text-xs sm:text-sm border-collapse min-w-[550px]">
                         <thead>
@@ -99,7 +94,6 @@
                 </div>
             </div>
 
-            <!-- フッター -->
             <div class="p-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 shrink-0">
                 <button onclick="closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-700">キャンセル</button>
                 <button onclick="saveScores()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs sm:text-sm font-bold text-white shadow">💾 団体戦結果を確定して保存</button>
@@ -112,7 +106,6 @@
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4 space-y-3">
             <h4 id="dialogTitle" class="font-bold text-sm text-center text-slate-800">取得部位を選択</h4>
             
-            <!-- ▼ 先取 (1本目) -->
             <div>
                 <div class="text-[11px] font-bold text-amber-600 mb-1">▼ 先取（1本目）※初本◯付与</div>
                 <div class="grid grid-cols-4 gap-1.5">
@@ -123,7 +116,6 @@
                 </div>
             </div>
 
-            <!-- ▼ 通常 (2本目以降) -->
             <div>
                 <div class="text-[11px] font-bold text-indigo-600 mb-1">▼ 通常（2本目以降）</div>
                 <div class="grid grid-cols-4 gap-1.5">
@@ -134,7 +126,6 @@
                 </div>
             </div>
 
-            <!-- ▼ その他 -->
             <div>
                 <div class="text-[11px] font-bold text-slate-600 mb-1">▼ その他</div>
                 <div class="grid grid-cols-3 gap-1.5">
@@ -166,32 +157,27 @@
             { headerBg: 'bg-orange-600', badge: 'bg-orange-100 text-orange-800 border-orange-300', cardBg: 'bg-orange-50/40 border-orange-200' }
         ];
 
-        // 試合データ取得＆step2.htmlのブロックデータに完全同期させて試合カードを生成
         async function loadMatches() {
             let savedScoresMap = new Map();
             let rawMatches = [];
 
-            // スコア保存データのロード
             try {
                 const res = await fetch('/api/matches');
-                if (res.ok) {
-                    rawMatches = await res.json();
-                }
+                if (res.ok) rawMatches = await res.json();
             } catch (e) {
                 const saved = localStorage.getItem('kendo_matches');
                 if (saved) rawMatches = JSON.parse(saved);
             }
 
-            // 保存済みスコア結果をマッピング（キー: リーグ名_赤チーム_白チーム）
             rawMatches.forEach((m, i) => {
                 const parsed = parseMatchData(m, i);
                 const key1 = `${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`;
                 const key2 = `${parsed.league}_${parsed.whiteTeam}_${parsed.redTeam}`;
                 savedScoresMap.set(key1, parsed);
                 savedScoresMap.set(key2, parsed);
+                if (parsed.id) savedScoresMap.set(String(parsed.id), parsed);
             });
 
-            // step2.htmlで設定された正確なリーグチーム構造を構築
             let leagueBlocks = getLeagueBlocksFromStorage();
             let cleanMatches = [];
 
@@ -201,20 +187,24 @@
 
                 if (teams.length >= 2) {
                     let matchIndex = 1;
-                    // 総当たり組み合わせ（3チームならぴったり3試合、4チームならぴったり6試合）
                     for (let i = 0; i < teams.length; i++) {
                         for (let j = i + 1; j < teams.length; j++) {
                             const teamA = teams[i];
                             const teamB = teams[j];
                             const lookupKey = `${leagueName}_${teamA}_${teamB}`;
-                            const scoreData = savedScoresMap.get(lookupKey);
+                            const matchId = `${leagueName}_m${matchIndex}`;
+                            const scoreData = savedScoresMap.get(lookupKey) || savedScoresMap.get(matchId);
 
                             if (scoreData) {
+                                scoreData.id = matchId;
+                                scoreData.league = leagueName;
                                 scoreData.title = `第${matchIndex}試合`;
+                                scoreData.redTeam = teamA;
+                                scoreData.whiteTeam = teamB;
                                 cleanMatches.push(scoreData);
                             } else {
                                 cleanMatches.push({
-                                    id: `${leagueName}_${matchIndex}`,
+                                    id: matchId,
                                     league: leagueName,
                                     title: `第${matchIndex}試合`,
                                     redTeam: teamA,
@@ -233,7 +223,6 @@
             renderMatchGroups();
         }
 
-        // step2.htmlのブロック構造を取得（無ければスクショ2枚目の構成をデフォルト適用）
         function getLeagueBlocksFromStorage() {
             const saved = localStorage.getItem('kendo_league_blocks') || localStorage.getItem('kendo_groups');
             if (saved) {
@@ -248,7 +237,6 @@
                 } catch(e) {}
             }
 
-            // フォールバック（スクショ2枚目の完全正確な3チームずつ構成）
             return [
                 { league: 'Aリーグ', teams: ['春日市筑葉会', '大野東剣道スポーツ少年団', '太宰府振武会'] },
                 { league: 'Bリーグ', teams: ['松武館', '北部少年剣道クラブ', '二天会道場'] },
@@ -277,7 +265,7 @@
             }));
 
             return {
-                id: m.id || index,
+                id: m.id || `${league}_m${index + 1}`,
                 league,
                 title,
                 redTeam,
@@ -287,7 +275,6 @@
             };
         }
 
-        // グループ描画
         function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
@@ -296,45 +283,15 @@
             }
 
             const qualGrouped = {};
-            const tourneyMatches = [];
-
             matchesList.forEach((m, originalIndex) => {
                 m._originalIndex = originalIndex;
-                const leagueStr = String(m.league);
-                const titleStr = String(m.title);
-
-                const isTourney = leagueStr.includes('トーナメント') || leagueStr.includes('回戦') || 
-                                 titleStr.includes('トーナメント') || titleStr.includes('回戦');
-
-                if (isTourney) {
-                    tourneyMatches.push(m);
-                } else {
-                    if (!qualGrouped[m.league]) qualGrouped[m.league] = [];
-                    qualGrouped[m.league].push(m);
-                }
+                if (!qualGrouped[m.league]) qualGrouped[m.league] = [];
+                qualGrouped[m.league].push(m);
             });
 
             const qualLeagues = Object.keys(qualGrouped).sort((a, b) => a.localeCompare(b, 'ja'));
 
-            let allQualFinished = true;
-            let totalQualMatches = 0;
-            let finishedQualMatches = 0;
-
-            qualLeagues.forEach(l => {
-                qualGrouped[l].forEach(m => {
-                    totalQualMatches++;
-                    const summary = calculateTeamSummary(m.positions);
-                    if (m.isFinished || (summary.hasInput && summary.status !== '未実施')) {
-                        finishedQualMatches++;
-                    } else {
-                        allQualFinished = false;
-                    }
-                });
-            });
-
             let htmlContent = '';
-
-            // ① 予選リーグ描画（3チーム＝正確に3試合、4チーム＝正確に6試合）
             qualLeagues.forEach((leagueName, idx) => {
                 let matches = qualGrouped[leagueName];
                 matches.sort((a, b) => a.title.localeCompare(b.title, 'ja', { numeric: true }));
@@ -356,33 +313,6 @@
                     </div>
                 `;
             });
-
-            // ② 決勝トーナメント
-            if (tourneyMatches.length > 0) {
-                if (allQualFinished && totalQualMatches > 0) {
-                    htmlContent += `
-                        <div class="bg-amber-50/80 rounded-2xl p-4 sm:p-5 shadow-md border-2 border-amber-300">
-                            <div class="flex items-center gap-2 mb-4 border-b border-amber-200 pb-3">
-                                <span class="w-3.5 h-6 bg-amber-600 rounded-full inline-block"></span>
-                                <h3 class="text-lg sm:text-xl font-black text-amber-950 flex items-center gap-2">
-                                    🏆 決勝トーナメント <span class="text-xs bg-amber-200 text-amber-900 font-bold px-2.5 py-0.5 rounded-full">予選通過チーム</span>
-                                </h3>
-                            </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                ${tourneyMatches.map(m => renderMatchCardHtml(m, { headerBg: 'bg-amber-600', badge: 'bg-amber-100 text-amber-800 border-amber-300', cardBg: 'bg-amber-100/50 border-amber-200' })).join('')}
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    htmlContent += `
-                        <div class="bg-slate-200/60 border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center space-y-2">
-                            <div class="text-3xl">🔒</div>
-                            <h3 class="text-base font-black text-slate-700">決勝トーナメント（予選全試合終了後に自動公開）</h3>
-                            <p class="text-xs font-bold text-slate-500">予選リーグの進行状況: ${finishedQualMatches} / ${totalQualMatches} 試合完了</p>
-                        </div>
-                    `;
-                }
-            }
 
             container.innerHTML = htmlContent;
         }
@@ -434,7 +364,6 @@
             `;
         }
 
-        // モーダル表示
         function openModal(index) {
             currentMatchIndex = index;
             const match = matchesList[index];
@@ -452,7 +381,6 @@
             document.getElementById('scoreModal').classList.add('hidden');
         }
 
-        // 個人の勝敗判定
         function calculatePosResult(redPts, whitePts) {
             let redCount = redPts.filter(p => p !== '▲' && p !== 'CLEAR' && p !== '引分').length;
             let whiteCount = whitePts.filter(p => p !== '▲' && p !== 'CLEAR' && p !== '引分').length;
@@ -472,7 +400,6 @@
             }
         }
 
-        // チーム集計
         function calculateTeamSummary(positionsData) {
             let redWins = 0, whiteWins = 0, draws = 0;
             let redTotalPts = 0, whiteTotalPts = 0;
@@ -506,7 +433,6 @@
             return { status, hasInput: true, redWins, whiteWins, redTotalPts, whiteTotalPts, draws };
         }
 
-        // ポジション行描画
         function renderPositionRows() {
             const tbody = document.getElementById('positionRows');
             const match = matchesList[currentMatchIndex];
@@ -597,29 +523,57 @@
             renderPositionRows();
         }
 
+        // ★キー判定を共通化してサーバー＆ローカルに保存
         async function saveScores() {
             const match = matchesList[currentMatchIndex];
             const summary = calculateTeamSummary(match.positions);
             match.isFinished = true;
+            match.teamResult = summary.status;
+            match.redWins = summary.redWins;
+            match.whiteWins = summary.whiteWins;
+            match.redTotalPts = summary.redTotalPts;
+            match.whiteTotalPts = summary.whiteTotalPts;
+
+            const payload = {
+                id: match.id,
+                league: match.league,
+                title: match.title,
+                redTeam: match.redTeam,
+                whiteTeam: match.whiteTeam,
+                teamA: match.redTeam,
+                teamB: match.whiteTeam,
+                positions: match.positions,
+                isFinished: true,
+                teamResult: summary.status,
+                redWins: summary.redWins,
+                whiteWins: summary.whiteWins,
+                redTotalPts: summary.redTotalPts,
+                whiteTotalPts: summary.whiteTotalPts
+            };
 
             try {
                 await fetch(`/api/matches/${match.id}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: match.id,
-                        positions: match.positions,
-                        isFinished: true,
-                        teamResult: summary.status
-                    })
+                    body: JSON.stringify(payload)
                 });
             } catch (err) {
                 console.log('Local保存');
             }
 
-            localStorage.setItem('kendo_matches', JSON.stringify(matchesList));
+            // localStorageの保存データも最新化
+            let saved = [];
+            try {
+                saved = JSON.parse(localStorage.getItem('kendo_matches')) || [];
+            } catch(e){}
+            
+            const idx = saved.findIndex(m => m.id === match.id || (m.league === match.league && m.title === match.title));
+            if (idx >= 0) saved[idx] = payload;
+            else saved.push(payload);
 
-            alert(`【${summary.status}】で確定し、一覧へ反映しました！`);
+            localStorage.setItem('kendo_matches', JSON.stringify(saved));
+
+            alert(`【${summary.status}】で確定し、閲覧画面用データへ反映しました！`);
             closeModal();
             renderMatchGroups();
         }

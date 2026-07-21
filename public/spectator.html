@@ -3,470 +3,361 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>大会結果速報 - 少年剣道大会</title>
+    <title>少年剣道大会 速報</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .highlight-card {
-            border: 4px solid #eab308 !important;
-            background-color: #fef9c3 !important;
-            transform: scale(1.03);
-            transition: all 0.3s;
-            box-shadow: 0 10px 15px -3px rgba(234, 179, 8, 0.3);
-        }
-
-        /* 🏆 【新規追加】ツリー状（ブラケット）デザイン用CSS */
-        .tournament-tree-container {
-            display: flex;
-            gap: 2rem;
-            padding: 1rem;
-            min-width: max-content;
-        }
-        .tournament-round-column {
-            display: flex;
-            flex-direction: column;
-            justify-content: space-around;
-            min-width: 220px;
-        }
-        .bracket-match-node {
-            position: relative;
-            margin: 1rem 0;
-        }
-        /* 結合線の基本スタイル */
-        .bracket-match-node::after {
-            content: "";
-            position: absolute;
-            right: -1rem;
-            top: 50%;
-            width: 1rem;
-            height: 2px;
-            background-color: #cbd5e1;
-        }
-        .tournament-round-column:last-child .bracket-match-node::after {
-            display: none; /* 決勝戦より右側には線を引かない */
+        .modal-scroll {
+            max-height: calc(88vh - 100px);
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans">
+<body class="bg-slate-100 text-slate-800 font-sans">
 
-    <header class="bg-indigo-900 text-white p-4 shadow-md sticky top-0 z-20 flex justify-between items-center">
-        <h1 class="text-lg md:text-xl font-bold">🎌 <span id="tournamentTitle">少年剣道大会 速報</span></h1>
-        <span class="text-xs bg-indigo-800 px-2 py-1 rounded border border-indigo-700 animate-pulse">自動更新中 🟢</span>
+    <!-- ナビバー -->
+    <header class="bg-indigo-950 text-white p-4 shadow-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <h1 class="text-lg sm:text-xl font-black flex items-center gap-2">
+                ⚔️ 少年剣道大会 速報
+            </h1>
+            <span class="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> リアルタイム同期中
+            </span>
+        </div>
     </header>
 
-    <!-- 🏆 最終結果ブロック -->
-    <div id="finalResults" class="hidden bg-white p-6 shadow-md border-b-4 border-red-600 mb-2">
-        <h2 class="text-2xl font-black text-center text-red-700 mb-6 pb-2 inline-block mx-auto flex justify-center border-b-2 border-red-100">
-            🏆 大会最終結果 🏆
-        </h2>
-        <div class="space-y-4 max-w-2xl mx-auto">
-            <div class="bg-gradient-to-r from-yellow-100 to-yellow-50 border-2 border-yellow-400 rounded-xl p-4 text-center shadow-md">
-                <div class="text-yellow-600 font-black text-sm mb-1">🥇 優勝</div>
-                <div class="text-2xl md:text-3xl font-black text-gray-900" id="resWinner">-</div>
-            </div>
+    <main class="max-w-7xl mx-auto p-3 sm:p-6 space-y-6">
+        <!-- 試合カード一覧 -->
+        <div id="spectatorContainer" class="space-y-6">
+            <div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">速報データを読み込み中...</div>
         </div>
-    </div>
-
-    <!-- 🔍 マイチーム検索 -->
-    <div class="bg-white p-4 shadow-sm border-b">
-        <div class="max-w-md mx-auto">
-            <label class="block text-xs font-bold text-indigo-900 mb-1">🔍 マイチーム（道場・学校名）を検索・マーク</label>
-            <div class="relative">
-                <input type="text" id="teamSearchInput" oninput="highlightMyTeam()" placeholder="例: 福岡武道館、桜剣友会..." class="w-full pl-10 pr-4 py-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-600 font-bold text-base shadow-sm">
-                <span class="absolute left-3 top-2.5 text-gray-400 text-base">🔍</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- 📂 部門選択タブ -->
-    <div class="bg-white shadow-sm sticky top-[60px] z-10 overflow-x-auto no-scrollbar border-b border-gray-200">
-        <div class="flex whitespace-nowrap px-2 py-2 gap-2 min-w-max">
-            <button onclick="switchCategory('low_elem')" id="tab_low_elem" class="category-tab px-4 py-2 rounded-full text-sm font-bold bg-indigo-600 text-white transition">① 小学生低学年</button>
-            <button onclick="switchCategory('elem')" id="tab_elem" class="category-tab px-4 py-2 rounded-full text-sm font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition">② 小学生団体</button>
-            <button onclick="switchCategory('mid')" id="tab_mid" class="category-tab px-4 py-2 rounded-full text-sm font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition">③ 中学生団体</button>
-            <button onclick="switchCategory('mid_girls')" id="tab_mid_girls" class="category-tab px-4 py-2 rounded-full text-sm font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition">④ 中学女子団体</button>
-        </div>
-    </div>
-
-    <!-- ⚔️ 予選 / 決勝 切り替え -->
-    <div id="stageTabContainer" class="bg-gray-100 p-2 flex justify-center gap-4 border-b border-gray-200">
-        <button onclick="switchStage('league')" id="tab_league" class="stage-tab pb-2 px-2 text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 transition">予選リーグ</button>
-        <button onclick="switchStage('tournament')" id="tab_tournament" class="stage-tab pb-2 px-2 text-sm font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 transition">決勝トーナメント</button>
-    </div>
-
-    <!-- 📊 各リーグの所属チーム一覧 -->
-    <div id="leagueMembersArea" class="max-w-4xl mx-auto px-4 mt-4">
-        <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3">
-            <h3 class="text-xs font-bold text-indigo-900 mb-2 flex items-center gap-1">📋 各リーグの所属チーム一覧</h3>
-            <div id="leagueGroupList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs"></div>
-        </div>
-    </div>
-
-    <!-- 試合カード・ツリー描画メインエリア -->
-    <main class="p-4 w-full mx-auto pb-20" id="mainContent">
     </main>
 
-    <!-- モーダル詳細 -->
-    <div id="matchModal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="bg-indigo-900 text-white p-3 flex justify-between items-center">
-                <span class="font-bold text-sm" id="modalTitle">試合詳細スコア</span>
-                <button onclick="closeModal()" class="text-white hover:text-gray-300 font-bold text-xl leading-none">&times;</button>
+    <!-- 対戦詳細モーダル（閲覧用） -->
+    <div id="detailModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            <div class="bg-indigo-900 text-white p-3 sm:p-4 flex justify-between items-center shrink-0">
+                <h3 id="modalTitle" class="font-bold text-base sm:text-lg">試合詳細</h3>
+                <button onclick="closeModal()" class="text-slate-300 hover:text-white text-2xl font-bold px-2">&times;</button>
             </div>
-            <div class="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center text-center">
-                <div class="w-5/12 font-black text-lg text-indigo-700 truncate" id="modalTeamA"></div>
-                <div class="w-2/12 font-bold text-gray-400 text-sm">VS</div>
-                <div class="w-5/12 font-black text-lg text-indigo-700 truncate" id="modalTeamB"></div>
+
+            <div class="p-4 modal-scroll space-y-4">
+                <!-- チームヘッダー -->
+                <div class="bg-slate-100 rounded-xl p-3 border border-slate-200 flex justify-between items-center text-center">
+                    <div class="w-5/12">
+                        <div id="modalRedTeam" class="font-black text-sm sm:text-base text-red-700 truncate">赤チーム</div>
+                        <div id="modalRedSummary" class="text-xs text-red-600 font-bold mt-0.5">0勝 (0本)</div>
+                    </div>
+                    <div class="w-2/12 flex flex-col items-center">
+                        <span class="font-black text-xs text-slate-400">VS</span>
+                        <span id="modalResultBadge" class="mt-1 text-[11px] px-2 py-0.5 font-black rounded border bg-slate-200 text-slate-600">未実施</span>
+                    </div>
+                    <div class="w-5/12">
+                        <div id="modalWhiteTeam" class="font-black text-sm sm:text-base text-slate-800 truncate">白チーム</div>
+                        <div id="modalWhiteSummary" class="text-xs text-slate-600 font-bold mt-0.5">0勝 (0本)</div>
+                    </div>
+                </div>
+
+                <!-- ポジション別結果 -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs sm:text-sm border-collapse min-w-[400px]">
+                        <thead>
+                            <tr class="border-b bg-slate-50 text-slate-500 font-bold">
+                                <th class="p-2 w-14 text-center">位置</th>
+                                <th class="p-2 text-center">赤 取得部位</th>
+                                <th class="p-2 w-20 text-center">勝敗</th>
+                                <th class="p-2 text-center">白 取得部位</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modalPositionRows"></tbody>
+                    </table>
+                </div>
             </div>
-            <div class="px-4 py-2 bg-white flex justify-between items-center text-center border-b">
-                <div class="w-5/12 text-3xl font-black text-slate-800" id="modalScoreA">0</div>
-                <div class="w-2/12 text-xs text-gray-400 font-bold">勝者数</div>
-                <div class="w-5/12 text-3xl font-black text-slate-800" id="modalScoreB">0</div>
-            </div>
-            <div class="p-4 bg-white space-y-2 font-medium" id="modalDetails"></div>
-            <div class="p-4 bg-gray-50 text-center">
-                <button onclick="closeModal()" class="w-full bg-gray-300 text-gray-700 font-bold py-2.5 rounded-lg hover:bg-gray-400 transition">閉じる</button>
+
+            <div class="p-3 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+                <button onclick="closeModal()" class="px-5 py-2 bg-slate-200 hover:bg-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-700">閉じる</button>
             </div>
         </div>
     </div>
 
     <script>
-        let currentCategory = 'low_elem';
-        let currentStage = 'league';
-        let allMatches = [];
+        const positions = ['先鋒', '次鋒', '中堅', '副将', '大将'];
+        let spectatorMatches = [];
 
-        const fetchMatchData = async () => {
+        async function fetchSpectatorData() {
+            let savedMap = new Map();
+
+            // APIおよびlocalStorageの両方から結果データを検索収集
             try {
-                const resResults = await fetch('/api/results');
-                const finalData = await resResults.json();
-                if (finalData.title) document.getElementById('tournamentTitle').innerText = finalData.title + ' 速報';
-
-                // 優勝確定時の処理
-                if (finalData.status === 'finished' && finalData.winner && finalData.winner !== '-') {
-                    document.getElementById('resWinner').innerText = finalData.winner;
-                    document.getElementById('finalResults').classList.remove('hidden');
-                } else {
-                    document.getElementById('finalResults').classList.add('hidden');
+                const res = await fetch('/api/matches');
+                if (res.ok) {
+                    const apiData = await res.json();
+                    apiData.forEach(m => savedMap.set(m.id, m));
                 }
+            } catch(e) {}
 
-                const resMatches = await fetch('/api/matches');
-                allMatches = await resMatches.json();
-                 
-                renderLeagueOverview();
-                renderContent();       
-                highlightMyTeam();     
-            } catch (error) {
-                console.error("データの同期に失敗しました", error);
+            try {
+                const localData = JSON.parse(localStorage.getItem('kendo_matches')) || [];
+                localData.forEach(m => {
+                    if (m.id) savedMap.set(m.id, m);
+                    const k1 = `${m.league}_${m.redTeam}_${m.whiteTeam}`;
+                    const k2 = `${m.league}_${m.whiteTeam}_${m.redTeam}`;
+                    savedMap.set(k1, m);
+                    savedMap.set(k2, m);
+                });
+            } catch(e) {}
+
+            // step2.htmlの定義ブロックを取得
+            const leagueBlocks = getLeagueBlocksFromStorage();
+            let matchList = [];
+
+            leagueBlocks.forEach(block => {
+                const leagueName = block.league;
+                const teams = block.teams || [];
+
+                if (teams.length >= 2) {
+                    let matchIndex = 1;
+                    for (let i = 0; i < teams.length; i++) {
+                        for (let j = i + 1; j < teams.length; j++) {
+                            const teamA = teams[i];
+                            const teamB = teams[j];
+                            const matchId = `${leagueName}_m${matchIndex}`;
+                            const lookupKey = `${leagueName}_${teamA}_${teamB}`;
+
+                            const saved = savedMap.get(matchId) || savedMap.get(lookupKey);
+
+                            if (saved) {
+                                matchList.push({
+                                    ...saved,
+                                    id: matchId,
+                                    league: leagueName,
+                                    title: `第${matchIndex}試合`,
+                                    redTeam: teamA,
+                                    whiteTeam: teamB
+                                });
+                            } else {
+                                matchList.push({
+                                    id: matchId,
+                                    league: leagueName,
+                                    title: `第${matchIndex}試合`,
+                                    redTeam: teamA,
+                                    whiteTeam: teamB,
+                                    isFinished: false,
+                                    positions: positions.map(p => ({ position: p, red: [], white: [], result: '引分' }))
+                                });
+                            }
+                            matchIndex++;
+                        }
+                    }
+                }
+            });
+
+            spectatorMatches = matchList;
+            renderSpectatorView();
+        }
+
+        function getLeagueBlocksFromStorage() {
+            const saved = localStorage.getItem('kendo_league_blocks') || localStorage.getItem('kendo_groups');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        return parsed.map(b => ({
+                            league: b.league || b.name || b.league_name || 'Aリーグ',
+                            teams: (b.teams || b.members || []).map(t => typeof t === 'string' ? t : (t.name || t.team_name))
+                        }));
+                    }
+                } catch(e) {}
             }
-        };
 
-        const switchCategory = (category) => {
-            currentCategory = category;
-            document.querySelectorAll('.category-tab').forEach(tab => {
-                tab.className = 'category-tab px-4 py-2 rounded-full text-sm font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition';
+            return [
+                { league: 'Aリーグ', teams: ['春日市筑葉会', '大野東剣道スポーツ少年団', '太宰府振武会'] },
+                { league: 'Bリーグ', teams: ['松武館', '北部少年剣道クラブ', '二天会道場'] },
+                { league: 'Cリーグ', teams: ['須恵剣友会', '清流館', '上陽町少年剣道クラブ'] },
+                { league: 'Dリーグ', teams: ['西牟田少年剣道クラブ', '黒津少年剣道クラブ', '志免心正会'] },
+                { league: 'Eリーグ', teams: ['下妻剣道スポーツ少年団', '衛心館', '玄辰館道場'] },
+                { league: 'Fリーグ', teams: ['上陽道場', '仁保剣友会', '大野北剣道スポーツ少年団'] },
+                { league: 'Gリーグ', teams: ['篠栗少年剣道部', '宮竹少年剣道クラブ', '城島少年剣道部'] },
+                { league: 'Hリーグ', teams: ['福岡一信館', '大橋一信館', '福岡十生館'] },
+                { league: 'Iリーグ', teams: ['黒崎剣友会', '小倉正剣会', '八幡剣友会'] }
+            ];
+        }
+
+        function calculatePosResult(redPts, whitePts) {
+            let redCount = (redPts || []).filter(p => p !== '▲' && p !== 'CLEAR' && p !== '引分').length;
+            let whiteCount = (whitePts || []).filter(p => p !== '▲' && p !== 'CLEAR' && p !== '引分').length;
+
+            const redFouls = (redPts || []).filter(p => p === '▲').length;
+            const whiteFouls = (whitePts || []).filter(p => p === '▲').length;
+
+            whiteCount += Math.floor(redFouls / 2);
+            redCount += Math.floor(whiteFouls / 2);
+
+            if (redCount > whiteCount) return { text: '赤勝ち', class: 'bg-red-100 text-red-700 border-red-300', redPts: redCount, whitePts: whiteCount };
+            if (whiteCount > redCount) return { text: '白勝ち', class: 'bg-indigo-100 text-indigo-700 border-indigo-300', redPts: redCount, whitePts: whiteCount };
+            return { text: '引分', class: 'bg-amber-50 text-amber-700 border-amber-200', redPts: redCount, whitePts: whiteCount };
+        }
+
+        function calculateTeamSummary(positionsData) {
+            let redWins = 0, whiteWins = 0, draws = 0;
+            let redTotalPts = 0, whiteTotalPts = 0;
+            let hasInput = false;
+
+            (positionsData || []).forEach(pos => {
+                const res = calculatePosResult(pos.red, pos.white);
+                redTotalPts += res.redPts;
+                whiteTotalPts += res.whitePts;
+
+                if ((pos.red && pos.red.length > 0) || (pos.white && pos.white.length > 0)) hasInput = true;
+
+                if (res.text === '赤勝ち') redWins++;
+                else if (res.text === '白勝ち') whiteWins++;
+                else draws++;
             });
-            document.getElementById(`tab_${category}`).className = 'category-tab px-4 py-2 rounded-full text-sm font-bold bg-indigo-600 text-white transition';
-            renderContent();
-            renderLeagueOverview();
-        };
 
-        const switchStage = (stage) => {
-            currentStage = stage;
-            document.querySelectorAll('.stage-tab').forEach(tab => {
-                tab.className = 'stage-tab pb-2 px-2 text-sm font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 transition';
-            });
-            document.getElementById(`tab_${stage}`).className = 'stage-tab pb-2 px-2 text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 transition';
-            
-            document.getElementById('leagueMembersArea').style.display = stage === 'tournament' ? 'none' : 'block';
-            renderContent();
-            highlightMyTeam();
-        };
+            if (!hasInput) return { status: '未実施', hasInput: false, redWins: 0, whiteWins: 0, redTotalPts: 0, whiteTotalPts: 0 };
 
-        const renderLeagueOverview = () => {
-            const listDiv = document.getElementById('leagueGroupList');
-            listDiv.innerHTML = '';
-            if (currentStage !== 'league') return;
+            let status = '引分';
+            if (redWins > whiteWins) status = '赤勝ち';
+            else if (whiteWins > redWins) status = '白勝ち';
+            else {
+                if (redTotalPts > whiteTotalPts) status = '赤勝ち';
+                else if (whiteTotalPts > redTotalPts) status = '白勝ち';
+                else status = '引分';
+            }
 
-            const filtered = allMatches.filter(m => m.category === currentCategory && m.stage === '予選リーグ');
-            const groups = {};
+            return { status, hasInput: true, redWins, whiteWins, redTotalPts, whiteTotalPts, draws };
+        }
 
-            filtered.forEach(m => {
-                const leagueName = m.details && m.details.league ? m.details.league : 'Aリーグ';
-                if (!groups[leagueName]) {
-                    groups[leagueName] = new Set();
-                }
-                if (m.teamA && m.teamA !== '（不戦勝枠）') groups[leagueName].add(m.teamA);
-                if (m.teamB && m.teamB !== '（不戦勝枠）') groups[leagueName].add(m.teamB);
-            });
-
-            const sortedLeagueNames = Object.keys(groups).sort();
-
-            if (sortedLeagueNames.length === 0) {
-                listDiv.innerHTML = '<div class="text-gray-400 py-2">所属チームがありません。</div>';
+        function renderSpectatorView() {
+            const container = document.getElementById('spectatorContainer');
+            if (!spectatorMatches || spectatorMatches.length === 0) {
+                container.innerHTML = '<div class="text-center py-8 text-slate-400 font-bold bg-white rounded-xl">対戦データがありません</div>';
                 return;
             }
 
-            sortedLeagueNames.forEach(leagueName => {
-                const teamSet = groups[leagueName];
-                const col = document.createElement('div');
-                col.className = "bg-white p-2 rounded shadow-sm border";
-                col.innerHTML = `<span class="font-bold text-indigo-700">${leagueName}</span>`;
-                 
-                const ul = document.createElement('ul');
-                ul.className = "mt-1 space-y-0.5 text-gray-600 list-disc list-inside";
-                 
-                teamSet.forEach(team => { 
-                    ul.innerHTML += `<li class="league-team-item truncate" data-team="${team}">${team}</li>`; 
-                });
-                 
-                col.appendChild(ul);
-                listDiv.appendChild(col);
+            const grouped = {};
+            spectatorMatches.forEach((m, idx) => {
+                m._idx = idx;
+                if (!grouped[m.league]) grouped[m.league] = [];
+                grouped[m.league].push(m);
             });
-        };
 
-        const renderContent = () => {
-            const content = document.getElementById('mainContent');
-            content.innerHTML = '';
+            const sortedLeagues = Object.keys(grouped).sort((a, b) => a.localeCompare(b, 'ja'));
 
-            // =================================================================
-            // 📊 予選リーグ：従来通りのカードリスト形式表示
-            // =================================================================
-            if (currentStage === 'league') {
-                document.getElementById('mainContent').className = "p-4 max-w-5xl mx-auto pb-20";
-                const filteredMatches = allMatches.filter(m => m.category === currentCategory && m.stage === '予選リーグ');
-                if (filteredMatches.length === 0) {
-                    content.innerHTML = `<div class="bg-white rounded-lg shadow-sm border p-8 text-center text-gray-400 font-bold">予選組み合わせがまだ登録されていません。</div>`;
-                    return;
-                }
-                filteredMatches.sort((a, b) => a.title.localeCompare(b.title));
-                filteredMatches.forEach(match => {
-                    const card = createMatchCard(match);
-                    content.appendChild(card);
-                });
+            container.innerHTML = sortedLeagues.map(leagueName => {
+                const matches = grouped[leagueName];
+                matches.sort((a, b) => a.title.localeCompare(b.title, 'ja', { numeric: true }));
 
-            // =================================================================
-            // 🏆 決勝トーナメント：【刷新】横スクロール式ブラケット・ツリーUI
-            // =================================================================
-            } else {
-                const finalMatches = allMatches.filter(m => m.category === currentCategory && m.stage === '決勝トーナメント');
-                if (finalMatches.length === 0) {
-                    content.innerHTML = `<div class="bg-white rounded-lg shadow-sm border p-8 text-center text-gray-400 font-bold">決勝トーナメント表がまだ確定されていません。</div>`;
-                    return;
-                }
-
-                // 横スクロール用のラッパーコンテナをインジェクション
-                document.getElementById('mainContent').className = "p-4 w-full overflow-x-auto no-scrollbar pb-20";
-
-                const stagesGroup = {
-                    '1回戦': [],
-                    '2回戦': [],
-                    '3回戦': [],
-                    '準決勝': [],
-                    '決勝': [],
-                    'その他': []
-                };
-
-                finalMatches.forEach(match => {
-                    if (match.title.includes('決勝') && !match.title.includes('準決勝')) {
-                        stagesGroup['決勝'].push(match);
-                    } else if (match.title.includes('準決勝')) {
-                        stagesGroup['準決勝'].push(match);
-                    } else if (match.title.includes('3回戦')) {
-                        stagesGroup['3回戦'].push(match);
-                    } else if (match.title.includes('2回戦')) {
-                        stagesGroup['2回戦'].push(match);
-                    } else if (match.title.includes('1回戦')) {
-                        stagesGroup['1回戦'].push(match);
-                    } else {
-                        stagesGroup['その他'].push(match);
-                    }
-                });
-
-                const sortByMatchNum = (a, b) => {
-                    const numA = parseInt(a.title.match(/\d+/)?.[0] || 0);
-                    const numB = parseInt(b.title.match(/\d+/)?.[0] || 0);
-                    return numA - numB;
-                };
-
-                // ツリー全体を包むフレックスコンテナを生成
-                const treeContainer = document.createElement('div');
-                treeContainer.className = "tournament-tree-container";
-
-                // 進行フェーズ順（左から右へ段階的に進行）にカラムを作成
-                const order = ['1回戦', '2回戦', '3回戦', '準決勝', '決勝'];
-                
-                order.forEach(stageName => {
-                    const matches = stagesGroup[stageName];
-                    if (matches && matches.length > 0) {
-                        matches.sort(sortByMatchNum);
-
-                        const column = document.createElement('div');
-                        column.className = "tournament-round-column";
-
-                        // カラムヘッダー（回戦タイトル）
-                        const colHeader = document.createElement('div');
-                        colHeader.className = "text-center font-black text-xs text-indigo-900 bg-indigo-100 rounded py-1 mb-2 shadow-sm sticky top-0";
-                        colHeader.innerText = stageName;
-                        column.appendChild(colHeader);
-
-                        // 各試合ノードをカラムに追加
-                        matches.forEach(match => {
-                            const node = document.createElement('div');
-                            node.className = "bracket-match-node";
-                            
-                            const card = createMatchCard(match);
-                            // ブラケット表示用に少し幅をスリムに微調整
-                            card.classList.remove('mb-4');
-                            card.classList.add('w-[230px]', 'mx-auto', 'shadow-sm');
-                            
-                            node.appendChild(card);
-                            column.appendChild(node);
-                        });
-
-                        treeContainer.appendChild(column);
-                    }
-                });
-
-                // その他に分類された試合（3位決定戦などがあれば）を下部に添える
-                content.appendChild(treeContainer);
-                
-                if (stagesGroup['その他'].length > 0) {
-                    const extraArea = document.createElement('div');
-                    extraArea.className = "mt-8 border-t pt-4 max-w-xl mx-auto";
-                    stagesGroup['その他'].forEach(match => {
-                        extraArea.appendChild(createMatchCard(match));
-                    });
-                    content.appendChild(extraArea);
-                }
-            }
-        };
-
-        const createMatchCard = (match) => {
-            const card = document.createElement('div');
-            card.className = 'match-card bg-white rounded-xl shadow-md border-2 border-gray-200 mb-4 overflow-hidden cursor-pointer hover:border-indigo-400 hover:shadow-lg transition-all duration-200';
-            card.setAttribute('data-team-a', match.teamA);
-            card.setAttribute('data-team-b', match.teamB);
-            card.onclick = () => openModal(match);
-
-            let statusBadge = '';
-            let scoreText = 'VS';
-            let scoreColor = 'text-indigo-600';
-
-            if (match.status === 'finished') {
-                statusBadge = `<span class="bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">終了</span>`;
-                scoreText = `${match.scoreA} - ${match.scoreB}`;
-                scoreColor = 'text-gray-900 font-black text-xl';
-            } else if (match.status === 'ongoing') {
-                statusBadge = `<span class="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded font-black animate-pulse">試合中</span>`;
-                scoreText = `${match.scoreA} - ${match.scoreB}`;
-                scoreColor = 'text-red-600 font-black text-xl';
-            } else {
-                statusBadge = `<span class="bg-gray-400 text-white text-[10px] px-1.5 py-0.5 rounded font-black">試合前</span>`;
-            }
-
-            card.innerHTML = `
-                <div class="bg-gray-50 px-3 py-1 border-b text-xs text-gray-600 font-black flex justify-between items-center">
-                    <span class="truncate max-w-[140px]">${match.title}</span>
-                    ${statusBadge}
-                </div>
-                <div class="p-3 space-y-1.5 text-left text-sm">
-                    <div class="flex justify-between items-center font-black text-gray-800 border-b border-gray-50 pb-1">
-                        <span class="truncate max-w-[150px]">${match.teamA}</span>
-                        <span class="${match.status !== 'scheduled' && match.scoreA >= match.scoreB ? 'text-indigo-700 text-base' : 'text-gray-400'}">${match.status !== 'scheduled' ? match.scoreA : ''}</span>
+                return `
+                    <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
+                        <div class="flex items-center gap-2 mb-3 border-b border-slate-100 pb-2">
+                            <span class="w-3 h-5 bg-indigo-600 rounded-full inline-block"></span>
+                            <h3 class="text-base sm:text-lg font-black text-slate-900">${leagueName}</h3>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            ${matches.map(m => renderMatchCardHtml(m)).join('')}
+                        </div>
                     </div>
-                    <div class="flex justify-between items-center font-black text-gray-800">
-                        <span class="truncate max-w-[150px]">${match.teamB}</span>
-                        <span class="${match.status !== 'scheduled' && match.scoreB >= match.scoreA ? 'text-indigo-700 text-base' : 'text-gray-400'}">${match.status !== 'scheduled' ? match.scoreB : ''}</span>
+                `;
+            }).join('');
+        }
+
+        function renderMatchCardHtml(m) {
+            const summary = calculateTeamSummary(m.positions);
+            const isFinished = m.isFinished || (summary.hasInput && summary.status !== '未実施');
+
+            let badgeHtml = `<span class="bg-slate-100 text-slate-500 text-[11px] px-2.5 py-0.5 rounded font-bold">試合前</span>`;
+            let winnerText = "";
+            let cardBg = "bg-white border-slate-200";
+
+            if (isFinished) {
+                cardBg = "bg-slate-50 border-slate-300";
+                if (summary.status === '赤勝ち') {
+                    badgeHtml = `<span class="bg-red-600 text-white text-[11px] px-2.5 py-0.5 rounded-full font-black">試合終了</span>`;
+                    winnerText = `<div class="text-xs font-black text-red-600 truncate mt-1">🔴 勝者: ${m.redTeam}</div>`;
+                } else if (summary.status === '白勝ち') {
+                    badgeHtml = `<span class="bg-indigo-700 text-white text-[11px] px-2.5 py-0.5 rounded-full font-black">試合終了</span>`;
+                    winnerText = `<div class="text-xs font-black text-indigo-800 truncate mt-1">⚪ 勝者: ${m.whiteTeam}</div>`;
+                } else {
+                    badgeHtml = `<span class="bg-amber-600 text-white text-[11px] px-2.5 py-0.5 rounded-full font-black">試合終了</span>`;
+                    winnerText = `<div class="text-xs font-bold text-amber-700 mt-1">🤝 引き分け</div>`;
+                }
+            }
+
+            return `
+                <div class="p-3.5 rounded-xl border ${cardBg} shadow-xs cursor-pointer hover:border-indigo-300 transition" onclick="openDetailModal(${m._idx})">
+                    <div class="flex justify-between items-center text-xs font-bold text-slate-500 mb-2">
+                        <span>${m.title}</span>
+                        ${badgeHtml}
+                    </div>
+                    <div class="flex justify-between items-center text-center my-1.5">
+                        <div class="w-5/12 font-black text-sm text-slate-800 truncate">${m.redTeam}</div>
+                        <div class="w-2/12 text-xs font-black text-slate-300">VS</div>
+                        <div class="w-5/12 font-black text-sm text-slate-800 truncate">${m.whiteTeam}</div>
+                    </div>
+                    <div class="text-center">
+                        ${winnerText || '<span class="text-[11px] text-indigo-600 font-bold">タップして詳細を見る</span>'}
                     </div>
                 </div>
             `;
-            return card;
-        };
+        }
 
-        window.openModalById = (matchId) => {
-            if(!matchId || matchId === 'undefined') return;
-            const match = allMatches.find(m => m.id === matchId);
-            if(match) openModal(match);
-        };
+        function openDetailModal(idx) {
+            const match = spectatorMatches[idx];
+            const summary = calculateTeamSummary(match.positions);
 
-        const openModal = (match) => {
-            document.getElementById('modalTitle').innerText = match.title;
-            document.getElementById('modalTeamA').innerText = match.teamA;
-            document.getElementById('modalTeamB').innerText = match.teamB;
-             
-            const hasStarted = match.status === 'finished' || match.status === 'ongoing';
-            document.getElementById('modalScoreA').innerText = hasStarted ? match.scoreA : '0';
-            document.getElementById('modalScoreB').innerText = hasStarted ? match.scoreB : '0';
+            document.getElementById('modalTitle').innerText = `${match.league} ${match.title}`;
+            document.getElementById('modalRedTeam').innerText = match.redTeam;
+            document.getElementById('modalWhiteTeam').innerText = match.whiteTeam;
+            document.getElementById('modalRedSummary').innerText = `${summary.redWins}勝 (${summary.redTotalPts}本)`;
+            document.getElementById('modalWhiteSummary').innerText = `${summary.whiteWins}勝 (${summary.whiteTotalPts}本)`;
 
-            const detailsContainer = document.getElementById('modalDetails');
-            detailsContainer.innerHTML = '';
-
-            if (!hasStarted) {
-                detailsContainer.innerHTML = '<p class="text-center text-gray-400 py-4 text-sm font-bold">まだ試合が始まっていません</p>';
-            } else if (!match.details || !Array.isArray(match.details) || match.details.length === 0) {
-                detailsContainer.innerHTML = '<p class="text-center text-gray-500 py-4 text-sm font-bold">詳細データ（先鋒〜大将）が未入力です</p>';
+            const badge = document.getElementById('modalResultBadge');
+            if (summary.status === '赤勝ち') {
+                badge.className = "mt-1 text-[11px] px-2 py-0.5 font-black rounded border bg-red-100 text-red-700 border-red-300";
+                badge.innerText = "🔴 赤勝ち";
+            } else if (summary.status === '白勝ち') {
+                badge.className = "mt-1 text-[11px] px-2 py-0.5 font-black rounded border bg-indigo-100 text-indigo-800 border-indigo-300";
+                badge.innerText = "⚪ 白勝ち";
+            } else if (summary.status === '引分') {
+                badge.className = "mt-1 text-[11px] px-2 py-0.5 font-black rounded border bg-amber-100 text-amber-800 border-amber-300";
+                badge.innerText = "🤝 引分け";
             } else {
-                match.details.forEach(detail => {
-                    const row = document.createElement('div');
-                    row.className = 'flex justify-between items-center py-2 border-b last:border-b-0 text-base';
-                     
-                    const formatPoint = (pt) => {
-                        if(!pt) return '-';
-                        if(pt === '引') return `<span class="text-teal-600 font-bold">引</span>`;
-                        if(pt.includes('○')) return `<span class="text-orange-600 font-black">${pt}</span>`;
-                        if(pt.includes('▲') || pt.includes('▼')) return `<span class="text-red-600 font-bold">${pt}</span>`;
-                        return `<span class="text-indigo-800 font-bold">${pt}</span>`;
-                    };
-
-                    row.innerHTML = `
-                        <div class="w-5/12 flex justify-end gap-2 pr-2">${formatPoint(detail.a1)} ${formatPoint(detail.a2)}</div>
-                        <div class="w-2/12 text-center font-black text-gray-500 text-xs bg-gray-100 rounded py-1">${detail.pos}</div>
-                        <div class="w-5/12 flex justify-start gap-2 pl-2">${formatPoint(detail.b1)} ${formatPoint(detail.b2)}</div>
-                    `;
-                    detailsContainer.appendChild(row);
-                });
+                badge.className = "mt-1 text-[11px] px-2 py-0.5 font-black rounded border bg-slate-200 text-slate-600";
+                badge.innerText = "未実施";
             }
-            document.getElementById('matchModal').classList.remove('hidden');
-        };
 
-        const closeModal = () => document.getElementById('matchModal').classList.add('hidden');
+            const tbody = document.getElementById('modalPositionRows');
+            tbody.innerHTML = '';
 
-        window.highlightMyTeam = () => {
-            const keyword = document.getElementById('teamSearchInput').value.trim();
-            const cards = document.querySelectorAll('.match-card, [data-team-a]');
-            const listItems = document.querySelectorAll('.league-team-item');
+            positions.forEach((pName, pIdx) => {
+                const pos = (match.positions && match.positions[pIdx]) || { red: [], white: [] };
+                const res = calculatePosResult(pos.red, pos.white);
 
-            cards.forEach(card => card.classList.remove('highlight-card'));
-            listItems.forEach(item => item.classList.remove('text-yellow-600', 'font-black', 'bg-yellow-100', 'p-1', 'rounded'));
-
-            if (!keyword) return;
-
-            let firstFoundCard = null;
-
-            cards.forEach(card => {
-                const teamA = card.getAttribute('data-team-a') || '';
-                const teamB = card.getAttribute('data-team-b') || '';
-                if (teamA.includes(keyword) || teamB.includes(keyword)) {
-                    card.classList.add('highlight-card');
-                    if (!firstFoundCard) firstFoundCard = card;
-                }
+                const tr = document.createElement('tr');
+                tr.className = 'border-b hover:bg-slate-50';
+                tr.innerHTML = `
+                    <td class="p-2 font-bold text-center bg-slate-100 text-slate-700">${pName}</td>
+                    <td class="p-2 text-center font-bold text-red-600">${(pos.red || []).join(' ') || '-'}</td>
+                    <td class="p-2 text-center"><span class="text-[11px] px-2 py-0.5 font-bold rounded border ${res.class}">${res.text}</span></td>
+                    <td class="p-2 text-center font-bold text-indigo-800">${(pos.white || []).join(' ') || '-'}</td>
+                `;
+                tbody.appendChild(tr);
             });
 
-            listItems.forEach(item => {
-                const team = item.getAttribute('data-team');
-                if (team && team.includes(keyword)) { 
-                    item.classList.add('text-yellow-600', 'font-black', 'bg-yellow-100', 'p-1', 'rounded'); 
-                }
-            });
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
 
-            if (firstFoundCard) {
-                firstFoundCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-            }
-        };
+        function closeModal() {
+            document.getElementById('detailModal').classList.add('hidden');
+        }
 
-        fetchMatchData();
-        setInterval(fetchMatchData, 5000);
+        // 定期的に最新データを自動同期（5秒ごと）
+        fetchSpectatorData();
+        setInterval(fetchSpectatorData, 5000);
     </script>
 </body>
 </html>
