@@ -292,7 +292,6 @@ app.post('/api/tournament/generate', async (req, res) => {
         // 📊 予選リーグの自動生成ロジック
         // ==========================================
         if (type === 'league') {
-            // 同門をできる限りバラけさせたチームリストを取得
             const optimizedTeams = optimizeTeamDistribution(teams);
             const totalTeams = optimizedTeams.length;
 
@@ -476,27 +475,11 @@ app.post('/api/tournament/generate', async (req, res) => {
             message: `${category} の${targetStage}（${matchesToInsert.length}試合）を正常に生成・上書きしました。` 
         });
 
-// 同門対決を極限まで避ける配列並び替え関数
-function optimizeTeamDistribution(teams) {
-    const orgGroups = {};
-    teams.forEach(team => {
-        if (!orgGroups[team.organization]) orgGroups[team.organization] = [];
-        orgGroups[team.organization].push(team);
-    });
-    const sortedOrgs = Object.keys(orgGroups).sort((a, b) => orgGroups[b].length - orgGroups[a].length);
-    const result = [];
-    let hasMore = true;
-    while (hasMore) {
-        hasMore = false;
-        for (const org of sortedOrgs) {
-            if (orgGroups[org].length > 0) {
-                result.push(orgGroups[org].shift());
-                hasMore = true;
-            }
-        }
+    } catch (err) {
+        console.error("生成処理内エラー:", err);
+        return res.status(500).json({ error: err.message });
     }
-    return result;
-}
+});
 
 // =================================================================
 // 🚀 サーバー起動（待ち受け開始）の記述を追加
