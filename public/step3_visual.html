@@ -47,7 +47,7 @@
         <div class="bg-white p-2.5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-2 items-center">
             <span class="text-xs font-black text-slate-400 px-2">部門選択:</span>
             <button onclick="switchCategory('小学生低学年')" id="btn-小学生低学年" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">① 小学生低学年</button>
-            <button onclick="switchCategory('小学生高学年')" id="btn-小学生団体" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">② 小学生団体</button>
+            <button onclick="switchCategory('小学生団体')" id="btn-小学生団体" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">② 小学生団体</button>
             <button onclick="switchCategory('中学生団体')" id="btn-中学生団体" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">③ 中学生団体</button>
             <button onclick="switchCategory('中学生女子団体')" id="btn-中学生女子団体" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">④ 中学生女子団体</button>
         </div>
@@ -266,9 +266,19 @@
             renderMatchGroups();
         }
 
+        // 部門名（和名）とstep2の英名キーのマッピング
+        const categoryKeyMap = {
+            '小学生低学年': 'low_elem',
+            '小学生団体': 'elem',
+            '中学生団体': 'mid',
+            '中学生女子団体': 'mid_girls'
+        };
+
         // 部門ごとのリーグブロックを取得（未登録なら空配列を返して共通フォールバックを防止）
         function getLeagueBlocksFromStorage(cat) {
-            const saved = localStorage.getItem(`kendo_league_blocks_${cat}`);
+            const keyName = categoryKeyMap[cat] || cat;
+            // 英名キー（low_elem等）と和名キー（小学生低学年等）の両方を検索
+            const saved = localStorage.getItem(`kendo_league_blocks_${keyName}`) || localStorage.getItem(`kendo_league_blocks_${cat}`);
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
@@ -293,7 +303,6 @@
 
             return []; // まだ生成されていない部門は空
         }
-
         function parseMatchData(m, index) {
             let league = m.league || m.league_name || m.stage || m.group_name || m.group || 'Aリーグ';
             let title = m.title || m.match_name || `第${index + 1}試合`;
