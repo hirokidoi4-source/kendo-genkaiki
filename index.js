@@ -443,21 +443,38 @@ app.post('/api/tournament/generate', async (req, res) => {
             }
         }
 
-        if (type === 'league') {
-            await supabase.from('matches').delete().eq('category', category).eq('stage', '予選リーグ');
-        } else {
-            await supabase.from('matches').delete().eq('category', category).eq('stage', '決勝トーナメント');
+        // --- 1. 既存データの安全な削除 ---
+        const targetStage = type === 'league' ? '予選リーグ' : '決勝トーナメント';
+        const { error: delError } = await supabase
+            .from('matches')
+            .delete()
+            .eq('category', category)
+            .eq('stage', targetStage);
+
+        if (delError) {
+            console.error(`[Generate Error] 既存の${targetStage}データの削除に失敗:`, delError);
+            return res.status(500).json({ error: `既存データのクリーンアップ失敗: ${delError.message}` });
         }
 
-        const { error: iError } = await supabase.from('matches').insert(matchesToInsert);
-        if (iError) return res.status(500).json({ error: iError.message });
+        // --- 2. 一括インサートの堅牢化（エラー詳細のログ出力） ---
+        console.log(`[Generate] ${category} (${targetStage}): ${matchesToInsert.length}件の試合データを送信します。`);
+        
+        const { data: insertedData, error: iError } = await supabase
+            .from('matches')
+            .insert(matchesToInsert)
+            .select();
 
-        res.json({ success: true, message: `${category} の組み合わせを正常に生成・上書きしました。` });
-    } catch (err) {
-        console.error("生成処理内エラー:", err);
-        res.status(500).json({ error: err.message });
-    }
-});
+        if (iError) {
+            console.error(`[Generate Error] ${targetStage}データの保存に失敗:`, iError);
+            return res.status(500).json({ error: `試合データの保存に失敗しました: ${iError.message}` });
+        }
+
+        console.log(`[Generate Success] ${insertedData ? insertedData.length : 0}件の登録に成功しました。`);
+
+        return res.json({ 
+            success: true, 
+            message: `${category} の${targetStage}（${matchesToInsert.length}試合）を正常に生成・上書きしました。` 
+        });
 
 // 同門対決を極限まで避ける配列並び替え関数
 function optimizeTeamDistribution(teams) {
