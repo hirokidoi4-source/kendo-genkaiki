@@ -159,14 +159,14 @@
             { headerBg: 'bg-indigo-600', badge: 'bg-indigo-100 text-indigo-800 border-indigo-300', cardBg: 'bg-indigo-50/40 border-indigo-200' },
             { headerBg: 'bg-emerald-600', badge: 'bg-emerald-100 text-emerald-800 border-emerald-300', cardBg: 'bg-emerald-50/40 border-emerald-200' },
             { headerBg: 'bg-amber-600', badge: 'bg-amber-100 text-amber-800 border-amber-300', cardBg: 'bg-amber-50/40 border-amber-200' },
-            { headerBg: 'bg-rose-600', badge: 'bg-rose-100 text-rose-800 border-rose-300', cardBg: 'bg-rose-50/40 border-rose-200' },
+            { headerBg: 'bg-rose-600', badge: 'bg-rose-100 text-rose-800 border-rose-200', cardBg: 'bg-rose-50/40 border-rose-200' },
             { headerBg: 'bg-sky-600', badge: 'bg-sky-100 text-sky-800 border-sky-300', cardBg: 'bg-sky-50/40 border-sky-200' },
-            { headerBg: 'bg-purple-600', badge: 'bg-purple-100 text-purple-800 border-purple-200', cardBg: 'bg-purple-50/40 border-purple-200' },
+            { headerBg: 'bg-purple-600', badge: 'bg-purple-100 text-purple-800 border-purple-300', cardBg: 'bg-purple-50/40 border-purple-200' },
             { headerBg: 'bg-teal-600', badge: 'bg-teal-100 text-teal-800 border-teal-300', cardBg: 'bg-teal-50/40 border-teal-200' },
             { headerBg: 'bg-orange-600', badge: 'bg-orange-100 text-orange-800 border-orange-300', cardBg: 'bg-orange-50/40 border-orange-200' }
         ];
 
-        // 試合データ取得
+        // 試合データ取得＆正確な総当たり試合数の構築
         async function loadMatches() {
             let rawData = [];
             try {
@@ -182,24 +182,79 @@
                 }
             }
 
-            // ★重複データの排除＆一意化処理
-            const uniqueMap = new Map();
+            // 1. 各リーグごとの「所属チームリスト」を正しく抽出
+            const leagueTeamsMap = new Map();
+            const tourneyList = [];
+
             rawData.forEach((m, i) => {
                 const parsed = parseMatchData(m, i);
-                // リーグ名＋対戦相手2つのペアキー（順不同）を作成して重複検出
-                const teamPairKey = [parsed.redTeam, parsed.whiteTeam].sort().join(' vs ');
-                const uniqueKey = `${parsed.league}_${teamPairKey}_${parsed.title}`;
-                
-                if (!uniqueMap.has(uniqueKey)) {
-                    uniqueMap.set(uniqueKey, parsed);
+                const league = parsed.league;
+
+                if (league.includes('トーナメント') || parsed.title.includes('トーナメント')) {
+                    tourneyList.push(parsed);
+                } else {
+                    if (!leagueTeamsMap.has(league)) {
+                        leagueTeamsMap.set(league, new Set());
+                    }
+                    if (parsed.redTeam && parsed.redTeam !== '赤チーム') leagueTeamsMap.get(league).add(parsed.redTeam);
+                    if (parsed.whiteTeam && parsed.whiteTeam !== '白チーム') leagueTeamsMap.get(league).add(parsed.whiteTeam);
                 }
             });
 
-            matchesList = Array.from(uniqueMap.values());
+            // 2. リーグごとに所属チームの「総当たり対戦カード」のみを厳密生成
+            let cleanMatches = [];
+
+            leagueTeamsMap.forEach((teamSet, leagueName) => {
+                const teams = Array.from(teamSet);
+                const existingLeagueMatches = rawData.map((m, i) => parseMatchData(m, i)).filter(m => m.league === leagueName);
+
+                if (teams.length >= 2) {
+                    // 総当たり組み合わせ（3チームなら3試合、4チームなら6試合）
+                    let matchIndex = 1;
+                    for (let i = 0; i < teams.length; i++) {
+                        for (let j = i + 1; j < teams.length; j++) {
+                            const teamA = teams[i];
+                            const teamB = teams[j];
+
+                            // 既存の入力済み結果データがあればそれを探して引き継ぐ
+                            const found = existingLeagueMatches.find(m => 
+                                (m.redTeam === teamA && m.whiteTeam === teamB) || 
+                                (m.redTeam === teamB && m.whiteTeam === teamA)
+                            );
+
+                            if (found) {
+                                found.title = `第${matchIndex}試合`;
+                                cleanMatches.push(found);
+                            } else {
+                                cleanMatches.push({
+                                    id: `${leagueName}_${matchIndex}`,
+                                    league: leagueName,
+                                    title: `第${matchIndex}試合`,
+                                    redTeam: teamA,
+                                    whiteTeam: teamB,
+                                    isFinished: false,
+                                    positions: positions.map(p => ({ position: p, red: [], white: [], result: '引分' }))
+                                });
+                            }
+                            matchIndex++;
+                        }
+                    }
+                } else {
+                    // バックアップ：一意化のみ行ってそのまま使用
+                    const uniqueMap = new Map();
+                    existingLeagueMatches.forEach(m => {
+                        const pairKey = [m.redTeam, m.whiteTeam].sort().join(' vs ');
+                        if (!uniqueMap.has(pairKey)) uniqueMap.set(pairKey, m);
+                    });
+                    cleanMatches.push(...Array.from(uniqueMap.values()));
+                }
+            });
+
+            matchesList = [...cleanMatches, ...tourneyList];
             renderMatchGroups();
         }
 
-        // データの解析＆リーグ名・タイトル抽出
+        // データの解析
         function parseMatchData(m, index) {
             let league = m.league || m.league_name || m.stage || m.group_name || m.group || 'Aリーグ';
             let title = m.title || m.match_name || `第${index + 1}試合`;
@@ -252,7 +307,6 @@
 
             groups.forEach((g, idx) => {
                 const teams = sampleTeams[idx % sampleTeams.length];
-                // 3チーム総当たり：全3試合
                 const roundMatches = [
                     { title: '第1試合', redTeam: teams[0], whiteTeam: teams[1] },
                     { title: '第2試合', redTeam: teams[1], whiteTeam: teams[2] },
@@ -275,7 +329,7 @@
             return result;
         }
 
-        // ★グループ描画 & 試合数の正確化
+        // グループ描画
         function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
@@ -322,11 +376,9 @@
 
             let htmlContent = '';
 
-            // ① 予選リーグの描画（各3試合ずつ正しく描画）
+            // ① 予選リーグ描画（正しく計算された総当たり試合数のみ）
             qualLeagues.forEach((leagueName, idx) => {
                 let matches = qualGrouped[leagueName];
-                
-                // 試合順（第1試合 -> 第2試合 -> 第3試合）にきれいに並び替え
                 matches.sort((a, b) => a.title.localeCompare(b.title, 'ja', { numeric: true }));
 
                 const theme = colorThemes[idx % colorThemes.length];
@@ -347,7 +399,7 @@
                 `;
             });
 
-            // ② 決勝トーナメント（全完了後に公開）
+            // ② 決勝トーナメント
             if (tourneyMatches.length > 0) {
                 if (allQualFinished && totalQualMatches > 0) {
                     htmlContent += `
