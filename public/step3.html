@@ -163,6 +163,7 @@
             { headerBg: 'bg-orange-600', badge: 'bg-orange-100 text-orange-800 border-orange-300', cardBg: 'bg-orange-50/40 border-orange-200' }
         ];
 
+        // 初期化：URLまたは保存データから部門決定
         function initCategory() {
             const params = new URLSearchParams(window.location.search);
             const urlCat = params.get('category') || params.get('dept') || params.get('class');
@@ -177,6 +178,7 @@
             updateCategoryTabUi();
         }
 
+        // タブ見た目の更新
         function updateCategoryTabUi() {
             categoryList.forEach(cat => {
                 const btn = document.getElementById(`btn-${cat}`);
@@ -190,6 +192,7 @@
             });
         }
 
+        // 部門切り替え
         function switchCategory(cat) {
             currentCategory = cat;
             localStorage.setItem('kendo_current_category', cat);
@@ -611,6 +614,7 @@
             renderMatchGroups();
         }
 
+        // 実行開始
         initCategory();
         loadMatches();
     </script>

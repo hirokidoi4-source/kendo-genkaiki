@@ -43,7 +43,7 @@
             </div>
         </header>
 
-        <!-- ★部門切り替えタブ（常時固定表示） -->
+        <!-- 部門切り替えタブ -->
         <div class="bg-white p-2.5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-2 items-center">
             <span class="text-xs font-black text-slate-400 px-2">部門選択:</span>
             <button onclick="switchCategory('小学生低学年')" id="btn-小学生低学年" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">① 小学生低学年</button>
@@ -163,7 +163,6 @@
             { headerBg: 'bg-orange-600', badge: 'bg-orange-100 text-orange-800 border-orange-300', cardBg: 'bg-orange-50/40 border-orange-200' }
         ];
 
-        // 初期化：URLまたは保存データから部門決定
         function initCategory() {
             const params = new URLSearchParams(window.location.search);
             const urlCat = params.get('category') || params.get('dept') || params.get('class');
@@ -178,7 +177,6 @@
             updateCategoryTabUi();
         }
 
-        // タブ見た目の更新
         function updateCategoryTabUi() {
             categoryList.forEach(cat => {
                 const btn = document.getElementById(`btn-${cat}`);
@@ -192,7 +190,6 @@
             });
         }
 
-        // 部門切り替え
         function switchCategory(cat) {
             currentCategory = cat;
             localStorage.setItem('kendo_current_category', cat);
@@ -205,21 +202,21 @@
             let rawMatches = [];
 
             try {
-                const res = await fetch('/api/matches');
+                const res = await fetch(`/api/matches?category=${encodeURIComponent(currentCategory)}`);
                 if (res.ok) rawMatches = await res.json();
             } catch (e) {
-                const saved = localStorage.getItem('kendo_matches');
+                const saved = localStorage.getItem(`kendo_matches_${currentCategory}`) || localStorage.getItem('kendo_matches');
                 if (saved) rawMatches = JSON.parse(saved);
             }
 
-            rawMatches.forEach((m, i) => {
+            // 現在選択中の部門のデータのみをスコア Map に登録
+            rawMatches.filter(m => !m.category || m.category === currentCategory).forEach((m, i) => {
                 const parsed = parseMatchData(m, i);
-                const matchCat = m.category || currentCategory;
-                const key1 = `${matchCat}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`;
-                const key2 = `${matchCat}_${parsed.league}_${parsed.whiteTeam}_${parsed.redTeam}`;
+                const key1 = `${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`;
+                const key2 = `${currentCategory}_${parsed.league}_${parsed.whiteTeam}_${parsed.redTeam}`;
                 savedScoresMap.set(key1, parsed);
                 savedScoresMap.set(key2, parsed);
-                if (parsed.id) savedScoresMap.set(`${matchCat}_${parsed.id}`, parsed);
+                if (parsed.id) savedScoresMap.set(`${currentCategory}_${parsed.id}`, parsed);
             });
 
             let leagueBlocks = getLeagueBlocksFromStorage(currentCategory);
@@ -269,8 +266,9 @@
             renderMatchGroups();
         }
 
+        // 部門ごとのリーグブロックを取得（未登録なら空配列を返して共通フォールバックを防止）
         function getLeagueBlocksFromStorage(cat) {
-            const saved = localStorage.getItem(`kendo_league_blocks_${cat}`) || localStorage.getItem('kendo_league_blocks');
+            const saved = localStorage.getItem(`kendo_league_blocks_${cat}`);
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
@@ -283,17 +281,17 @@
                 } catch(e) {}
             }
 
-            return [
-                { league: 'Aリーグ', teams: ['春日市筑葉会', '大野東剣道スポーツ少年団', '太宰府振武会'] },
-                { league: 'Bリーグ', teams: ['松武館', '北部少年剣道クラブ', '二天会道場'] },
-                { league: 'Cリーグ', teams: ['須恵剣友会', '清流館', '上陽町少年剣道クラブ'] },
-                { league: 'Dリーグ', teams: ['西牟田少年剣道クラブ', '黒津少年剣道クラブ', '志免心正会'] },
-                { league: 'Eリーグ', teams: ['下妻剣道スポーツ少年団', '衛心館', '玄辰館道場'] },
-                { league: 'Fリーグ', teams: ['上陽道場', '仁保剣友会', '大野北剣道スポーツ少年団'] },
-                { league: 'Gリーグ', teams: ['篠栗少年剣道部', '宮竹少年剣道クラブ', '城島少年剣道部'] },
-                { league: 'Hリーグ', teams: ['福岡一信館', '大橋一信館', '福岡十生館'] },
-                { league: 'Iリーグ', teams: ['黒崎剣友会', '小倉正剣会', '八幡剣友会'] }
-            ];
+            // 部門別データがまだない場合は「小学生高学年」のみデフォルトサンプルを表示、その他は空にする
+            if (cat === '小学生高学年') {
+                return [
+                    { league: 'Aリーグ', teams: ['春日市筑葉会', '大野東剣道スポーツ少年団', '太宰府振武会'] },
+                    { league: 'Bリーグ', teams: ['松武館', '北部少年剣道クラブ', '二天会道場'] },
+                    { league: 'Cリーグ', teams: ['須恵剣友会', '清流館', '上陽町少年剣道クラブ'] },
+                    { league: 'Dリーグ', teams: ['西牟田少年剣道クラブ', '黒津少年剣道クラブ', '志免心正会'] }
+                ];
+            }
+
+            return []; // まだ生成されていない部門は空
         }
 
         function parseMatchData(m, index) {
@@ -325,7 +323,12 @@
         function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
-                container.innerHTML = '<div class="text-center py-8 text-slate-400 font-bold col-span-full bg-white rounded-2xl border">登録されている対戦がありません</div>';
+                container.innerHTML = `
+                    <div class="text-center py-12 bg-white rounded-2xl border border-slate-200 space-y-3">
+                        <div class="text-4xl">📋</div>
+                        <div class="text-slate-600 font-bold">【${currentCategory}】の予選リーグ組み合わせがありません</div>
+                        <p class="text-xs text-slate-400">管理画面（step2.html）でチーム登録および予選リーグ生成を行ってください。</p>
+                    </div>`;
                 return;
             }
 
@@ -600,21 +603,20 @@
 
             let saved = [];
             try {
-                saved = JSON.parse(localStorage.getItem('kendo_matches')) || [];
+                saved = JSON.parse(localStorage.getItem(`kendo_matches_${currentCategory}`)) || [];
             } catch(e){}
             
-            const idx = saved.findIndex(m => m.id === match.id && (m.category === currentCategory || !m.category));
+            const idx = saved.findIndex(m => m.id === match.id);
             if (idx >= 0) saved[idx] = payload;
             else saved.push(payload);
 
-            localStorage.setItem('kendo_matches', JSON.stringify(saved));
+            localStorage.setItem(`kendo_matches_${currentCategory}`, JSON.stringify(saved));
 
             alert(`【${currentCategory} ${match.league} ${summary.status}】で確定しました！`);
             closeModal();
             renderMatchGroups();
         }
 
-        // 実行開始
         initCategory();
         loadMatches();
     </script>
