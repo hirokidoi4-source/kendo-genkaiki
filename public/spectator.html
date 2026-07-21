@@ -27,14 +27,23 @@
         </div>
     </header>
 
-    <main class="max-w-7xl mx-auto p-3 sm:p-6 space-y-6">
+    <main class="max-w-7xl mx-auto p-3 sm:p-6 space-y-4">
+        <!-- ★部門切り替えタブ（常時表示） -->
+        <div class="bg-white p-2.5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-2 items-center" id="spectatorCategoryNav">
+            <span class="text-xs font-black text-slate-400 px-2">部門選択:</span>
+            <button onclick="switchCategory('小学生低学年')" id="spec-btn-小学生低学年" class="spec-cat-btn px-4 py-2 rounded-xl font-black text-xs sm:text-sm transition bg-indigo-600 text-white shadow-sm">① 小学生低学年</button>
+            <button onclick="switchCategory('小学生高学年')" id="spec-btn-小学生高学年" class="spec-cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition bg-slate-100 text-slate-600 hover:bg-slate-200">② 小学生高学年</button>
+            <button onclick="switchCategory('中学生団体')" id="spec-btn-中学生団体" class="spec-cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition bg-slate-100 text-slate-600 hover:bg-slate-200">③ 中学生団体</button>
+            <button onclick="switchCategory('中学生女子団体')" id="spec-btn-中学生女子団体" class="spec-cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition bg-slate-100 text-slate-600 hover:bg-slate-200">④ 中学生女子団体</button>
+        </div>
+
         <!-- 試合カード一覧 -->
-        <div id="spectatorContainer" class="space-y-6">
+        <div id="spectatorContainer" class="space-y-6 pt-2">
             <div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">速報データを読み込み中...</div>
         </div>
     </main>
 
-    <!-- 対戦詳細モーダル（閲覧用） -->
+    <!-- 対戦詳細モーダル -->
     <div id="detailModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
             
@@ -44,7 +53,6 @@
             </div>
 
             <div class="p-4 modal-scroll space-y-4">
-                <!-- チームヘッダー -->
                 <div class="bg-slate-100 rounded-xl p-3 border border-slate-200 flex justify-between items-center text-center">
                     <div class="w-5/12">
                         <div id="modalRedTeam" class="font-black text-sm sm:text-base text-red-700 truncate">赤チーム</div>
@@ -60,7 +68,6 @@
                     </div>
                 </div>
 
-                <!-- ポジション別結果 -->
                 <div class="overflow-x-auto">
                     <table class="w-full text-xs sm:text-sm border-collapse min-w-[400px]">
                         <thead>
@@ -84,33 +91,52 @@
 
     <script>
         const positions = ['先鋒', '次鋒', '中堅', '副将', '大将'];
+        let currentCategory = '小学生低学年';
         let spectatorMatches = [];
+
+        function updateCategoryTabUi() {
+            document.querySelectorAll('.spec-cat-btn').forEach(btn => {
+                btn.className = "spec-cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition bg-slate-100 text-slate-600 hover:bg-slate-200";
+            });
+            const activeBtn = document.getElementById(`spec-btn-${currentCategory}`);
+            if (activeBtn) {
+                activeBtn.className = "spec-cat-btn px-4 py-2 rounded-xl font-black text-xs sm:text-sm transition bg-indigo-600 text-white shadow-sm";
+            }
+        }
+
+        function switchCategory(cat) {
+            currentCategory = cat;
+            updateCategoryTabUi();
+            fetchSpectatorData();
+        }
 
         async function fetchSpectatorData() {
             let savedMap = new Map();
 
-            // APIおよびlocalStorageの両方から結果データを検索収集
             try {
                 const res = await fetch('/api/matches');
                 if (res.ok) {
                     const apiData = await res.json();
-                    apiData.forEach(m => savedMap.set(m.id, m));
+                    apiData.forEach(m => {
+                        const cat = m.category || currentCategory;
+                        savedMap.set(`${cat}_${m.id}`, m);
+                    });
                 }
             } catch(e) {}
 
             try {
                 const localData = JSON.parse(localStorage.getItem('kendo_matches')) || [];
                 localData.forEach(m => {
-                    if (m.id) savedMap.set(m.id, m);
-                    const k1 = `${m.league}_${m.redTeam}_${m.whiteTeam}`;
-                    const k2 = `${m.league}_${m.whiteTeam}_${m.redTeam}`;
+                    const cat = m.category || currentCategory;
+                    if (m.id) savedMap.set(`${cat}_${m.id}`, m);
+                    const k1 = `${cat}_${m.league}_${m.redTeam}_${m.whiteTeam}`;
+                    const k2 = `${cat}_${m.league}_${m.whiteTeam}_${m.redTeam}`;
                     savedMap.set(k1, m);
                     savedMap.set(k2, m);
                 });
             } catch(e) {}
 
-            // step2.htmlの定義ブロックを取得
-            const leagueBlocks = getLeagueBlocksFromStorage();
+            const leagueBlocks = getLeagueBlocksFromStorage(currentCategory);
             let matchList = [];
 
             leagueBlocks.forEach(block => {
@@ -124,14 +150,15 @@
                             const teamA = teams[i];
                             const teamB = teams[j];
                             const matchId = `${leagueName}_m${matchIndex}`;
-                            const lookupKey = `${leagueName}_${teamA}_${teamB}`;
+                            const lookupKey = `${currentCategory}_${leagueName}_${teamA}_${teamB}`;
 
-                            const saved = savedMap.get(matchId) || savedMap.get(lookupKey);
+                            const saved = savedMap.get(`${currentCategory}_${matchId}`) || savedMap.get(lookupKey);
 
                             if (saved) {
                                 matchList.push({
                                     ...saved,
                                     id: matchId,
+                                    category: currentCategory,
                                     league: leagueName,
                                     title: `第${matchIndex}試合`,
                                     redTeam: teamA,
@@ -140,6 +167,7 @@
                             } else {
                                 matchList.push({
                                     id: matchId,
+                                    category: currentCategory,
                                     league: leagueName,
                                     title: `第${matchIndex}試合`,
                                     redTeam: teamA,
@@ -158,8 +186,8 @@
             renderSpectatorView();
         }
 
-        function getLeagueBlocksFromStorage() {
-            const saved = localStorage.getItem('kendo_league_blocks') || localStorage.getItem('kendo_groups');
+        function getLeagueBlocksFromStorage(cat) {
+            const saved = localStorage.getItem(`kendo_league_blocks_${cat}`) || localStorage.getItem('kendo_league_blocks');
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
@@ -255,7 +283,7 @@
                     <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
                         <div class="flex items-center gap-2 mb-3 border-b border-slate-100 pb-2">
                             <span class="w-3 h-5 bg-indigo-600 rounded-full inline-block"></span>
-                            <h3 class="text-base sm:text-lg font-black text-slate-900">${leagueName}</h3>
+                            <h3 class="text-base sm:text-lg font-black text-slate-900">${leagueName} <span class="text-xs text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full font-bold ml-1 border border-indigo-100">${currentCategory}</span></h3>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                             ${matches.map(m => renderMatchCardHtml(m)).join('')}
@@ -309,7 +337,7 @@
             const match = spectatorMatches[idx];
             const summary = calculateTeamSummary(match.positions);
 
-            document.getElementById('modalTitle').innerText = `${match.league} ${match.title}`;
+            document.getElementById('modalTitle').innerText = `${currentCategory} ${match.league} ${match.title}`;
             document.getElementById('modalRedTeam').innerText = match.redTeam;
             document.getElementById('modalWhiteTeam').innerText = match.whiteTeam;
             document.getElementById('modalRedSummary').innerText = `${summary.redWins}勝 (${summary.redTotalPts}本)`;
@@ -355,7 +383,6 @@
             document.getElementById('detailModal').classList.add('hidden');
         }
 
-        // 定期的に最新データを自動同期（5秒ごと）
         fetchSpectatorData();
         setInterval(fetchSpectatorData, 5000);
     </script>
