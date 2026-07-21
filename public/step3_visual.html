@@ -47,7 +47,7 @@
         <div class="bg-white p-2.5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-2 items-center">
             <span class="text-xs font-black text-slate-400 px-2">部門選択:</span>
             <button onclick="switchCategory('小学生低学年')" id="btn-小学生低学年" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">① 小学生低学年</button>
-            <button onclick="switchCategory('小学生高学年')" id="btn-小学生高学年" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">② 小学生高学年</button>
+            <button onclick="switchCategory('小学生高学年')" id="btn-小学生団体" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">② 小学生団体</button>
             <button onclick="switchCategory('中学生団体')" id="btn-中学生団体" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">③ 中学生団体</button>
             <button onclick="switchCategory('中学生女子団体')" id="btn-中学生女子団体" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition">④ 中学生女子団体</button>
         </div>
@@ -145,7 +145,7 @@
 
     <script>
         const positions = ['先鋒', '次鋒', '中堅', '副将', '大将'];
-        const categoryList = ['小学生低学年', '小学生高学年', '中学生団体', '中学生女子団体'];
+        const categoryList = ['小学生低学年', '小学生団体', '中学生団体', '中学生女子団体'];
         let currentCategory = '小学生低学年';
         let matchesList = [];
         let currentMatchIndex = null;

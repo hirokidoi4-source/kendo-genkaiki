@@ -109,7 +109,7 @@
                         leagueBox.innerHTML = `
                             <div class="bg-indigo-100 text-indigo-800 font-bold px-4 py-2 rounded-t-lg border-b border-indigo-200 flex justify-between items-center">
                                 <span>${leagueName}</span>
-                                <span class="text-xs text-white ${badgeColor} px-2 py-0.5 rounded-full font-normal">決勝進出: ${maxPromoted}枠</span>
+                                <span class="league-badge text-xs text-white ${badgeColor} px-2 py-0.5 rounded-full font-normal">決勝進出: ${maxPromoted}枠</span>
                             </div>
                             <ul id="list-${leagueName}" data-leaguename="${leagueName}" class="sortable-list min-h-[150px] p-2 space-y-2"></ul>
                         `;
@@ -141,19 +141,41 @@
                             ghostClass: 'bg-indigo-200',
                             onEnd: function () {
                                 checkDuplicates();
+                                updateLeagueBadges(); // 👈 ドラッグ移動時にバッジ枠数を更新
                             }
                         });
                         sortableInstances.push(ins);
                     });
 
                     checkDuplicates();
+                    updateLeagueBadges(); // 👈 初期表示時にバッジ枠数を更新
                 } catch (err) {
                     console.error("予選リーグ取得エラー", err);
                     alert("サーバーから予選リーグの対戦データを取得できませんでした。");
                 }
             };
 
-            // === 2. 同一母体の重複警告チェック ===
+            // === 進出枠バッジのリアルタイム更新 ===
+            const updateLeagueBadges = () => {
+                const leagueBoxes = document.querySelectorAll('#dynamicLeagueWrapper > div');
+                leagueBoxes.forEach(box => {
+                    const ul = box.querySelector('ul.sortable-list');
+                    if (!ul) return;
+
+                    const teamCount = ul.children.length; // 現在の枠内チーム数
+                    const maxPromoted = teamCount >= 4 ? 2 : 1;
+                    
+                    const badge = box.querySelector('.league-badge');
+                    if (badge) {
+                        badge.innerText = `決勝進出: ${maxPromoted}枠`;
+                        if (maxPromoted === 2) {
+                            badge.className = 'league-badge text-xs text-white bg-amber-500 px-2 py-0.5 rounded-full font-normal';
+                        } else {
+                            badge.className = 'league-badge text-xs text-white bg-indigo-500 px-2 py-0.5 rounded-full font-normal';
+                        }
+                    }
+                });
+            };            // === 2. 同一母体の重複警告チェック ===
             const checkDuplicates = () => {
                 const lists = document.querySelectorAll('.sortable-list');
                 lists.forEach(list => {
