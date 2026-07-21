@@ -216,9 +216,11 @@
                 const key2 = `${currentCategory}_${parsed.league}_${parsed.whiteTeam}_${parsed.redTeam}`;
                 savedScoresMap.set(key1, parsed);
                 savedScoresMap.set(key2, parsed);
-                if (parsed.id) savedScoresMap.set(`${currentCategory}_${parsed.id}`, parsed);
+                if (parsed.id) {
+                    savedScoresMap.set(`${currentCategory}_${parsed.id}`, parsed);
+                    savedScoresMap.set(`${parsed.id}`, parsed);
+                }
             });
-
             let leagueBlocks = getLeagueBlocksFromStorage(currentCategory);
             let cleanMatches = [];
 
@@ -324,11 +326,12 @@
                 title,
                 redTeam,
                 whiteTeam,
-                isFinished: m.isFinished || false,
+                isFinished: m.isFinished || m.status === 'finished' || m.status === '終了' || false,
+                scoreA: m.scoreA ?? m.redWins ?? 0,
+                scoreB: m.scoreB ?? m.whiteWins ?? 0,
                 positions: m.positions || posData
             };
         }
-
         function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
@@ -595,6 +598,9 @@
                 title: match.title,
                 redTeam: match.redTeam,
                 whiteTeam: match.whiteTeam,
+                scoreA: summary.redWins,
+                scoreB: summary.whiteWins,
+                status: 'finished',
                 positions: match.positions,
                 isFinished: true,
                 teamResult: summary.status
@@ -607,7 +613,7 @@
                     body: JSON.stringify(payload)
                 });
             } catch (err) {
-                console.log('Local保存');
+                console.log('API保存スキップ、LocalStorageのみ保存');
             }
 
             let saved = [];
@@ -620,12 +626,13 @@
             else saved.push(payload);
 
             localStorage.setItem(`kendo_matches_${currentCategory}`, JSON.stringify(saved));
+            // 全体保存キーにもバックアップ
+            localStorage.setItem('kendo_matches', JSON.stringify(saved));
 
             alert(`【${currentCategory} ${match.league} ${summary.status}】で確定しました！`);
             closeModal();
             renderMatchGroups();
         }
-
         initCategory();
         loadMatches();
     </script>
