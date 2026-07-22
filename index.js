@@ -549,6 +549,52 @@ function optimizeTeamDistribution(teams) {
 
     return result;
 }
+
+// =================================================================
+// 💾 手動組み替え後の予選リーグ保存 API（新規追加）
+// =================================================================
+app.post('/api/tournament/save_league', async (req, res) => {
+    const { category, matches } = req.body;
+    try {
+        if (!category || !Array.isArray(matches) || matches.length === 0) {
+            return res.status(400).json({ success: false, error: '有効なデータが送信されませんでした。' });
+        }
+
+        console.log(`[Save League] ${category} の組み替え予選データ（${matches.length}試合）を保存します。`);
+
+        // 1. 既存の該当部門の予選リーグデータをクリーンアップ
+        const { error: delError } = await supabase
+            .from('matches')
+            .delete()
+            .eq('category', category)
+            .eq('stage', '予選リーグ');
+
+        if (delError) {
+            console.error('[Save League Error] 既存データの削除に失敗:', delError);
+            return res.status(500).json({ success: false, error: `既存データの削除に失敗しました: ${delError.message}` });
+        }
+
+        // 2. 組み替え後の新しい対戦カードを一括インサート
+        const { data, error: insError } = await supabase
+            .from('matches')
+            .insert(matches)
+            .select();
+
+        if (insError) {
+            console.error('[Save League Error] 新規データの保存に失敗:', insError);
+            return res.status(500).json({ success: false, error: `対戦カードの保存に失敗しました: ${insError.message}` });
+        }
+
+        console.log(`[Save League Success] ${data ? data.length : 0}件の対戦カードを正常に上書き保存しました。`);
+
+        return res.json({ success: true, count: data ? data.length : 0 });
+
+    } catch (err) {
+        console.error('[Save League Critical Error]:', err);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // =================================================================
 // 🚀 サーバー起動（待ち受け開始）の記述を追加
 // =================================================================
