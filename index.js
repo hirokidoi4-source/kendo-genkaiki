@@ -110,17 +110,11 @@ app.post('/api/match_update', async (req, res) => {
             if (existingMatch && existingMatch.details) {
                 const oldDetails = typeof existingMatch.details === 'string' ? JSON.parse(existingMatch.details) : existingMatch.details;
                 
+                // 💡 既存のメタデータ（league情報等）があれば、それを保持したまま order_list のみ更新する
                 if (oldDetails && typeof oldDetails === 'object' && !Array.isArray(oldDetails)) {
                     parsedDetails = {
                         ...oldDetails,
                         order_list: Array.isArray(parsedDetails) ? parsedDetails : (parsedDetails.order_list || [])
-                    };
-                } else if (oldDetails && oldDetails.league) {
-                    parsedDetails = {
-                        league: oldDetails.league,
-                        league_size: oldDetails.league_size,
-                        max_promoted: oldDetails.max_promoted,
-                        order_list: parsedDetails
                     };
                 }
             }
@@ -134,7 +128,7 @@ app.post('/api/match_update', async (req, res) => {
             teamB,
             scoreA: parseInt(scoreA, 10) || 0,
             scoreB: parseInt(scoreB, 10) || 0,
-            status,
+            status: status || 'finished',
             details: parsedDetails
         };
 
@@ -149,6 +143,7 @@ app.post('/api/match_update', async (req, res) => {
             result = data;
         }
 
+        // 🏆 決勝トーナメントの自動勝ち上がり処理（※既存のコードをそのまま維持）
         if (status === 'finished' && stage === '決勝トーナメント') {
             const { data: allFinals } = await supabase.from('matches').select('*').eq('category', category).eq('stage', '決勝トーナメント');
             
@@ -207,7 +202,6 @@ app.post('/api/match_update', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
 app.get('/api/results', async (req, res) => {
     const { data, error } = await supabase.from('tournament_results').select('*').order('id', { ascending: false }).limit(1);
     res.json(data && data.length > 0 ? data[0] : { status: 'ongoing' });

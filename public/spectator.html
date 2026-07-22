@@ -169,7 +169,26 @@
                     const lookupKey = `${m.category || currentCategory}_${league}_${redTeam}_${whiteTeam}`;
                     const saved = savedMap.get(lookupKey);
 
-                    const posData = positions.map(p => ({ position: p, red: [], white: [], result: '引分' }));
+                    // 💡 Supabaseの details (または positions) から先鋒〜大将のデータを安全に取り出す
+                    let extractedPositions = null;
+                    
+                    // 1. m.details が存在する場合の安全なパース
+                    if (m.details) {
+                        let rawDet = typeof m.details === 'string' ? JSON.parse(m.details) : m.details;
+                        if (Array.isArray(rawDet)) {
+                            extractedPositions = rawDet;
+                        } else if (rawDet && Array.isArray(rawDet.order_list)) {
+                            extractedPositions = rawDet.order_list;
+                        }
+                    }
+
+                    // 2. details が無ければ m.positions を確認
+                    if (!extractedPositions && m.positions) {
+                        extractedPositions = typeof m.positions === 'string' ? JSON.parse(m.positions) : m.positions;
+                    }
+
+                    // 3. データが存在しない場合の初期化用デフォルトデータ
+                    const defaultPosData = positions.map(p => ({ position: p, red: [], white: [], result: '引分' }));
 
                     cleanMatches.push({
                         ...m,
@@ -180,7 +199,7 @@
                         redTeam: redTeam,
                         whiteTeam: whiteTeam,
                         isFinished: (saved && saved.isFinished) || m.isFinished || m.status === 'finished' || false,
-                        positions: (saved && saved.positions) || m.positions || posData
+                        positions: (saved && saved.positions) || extractedPositions || defaultPosData
                     });
                 });
             } else {
@@ -219,6 +238,7 @@
             spectatorMatches = cleanMatches;
             renderSpectatorView();
         }
+
         function getLeagueBlocksFromStorage(cat) {
             const keyName = categoryKeyMap[cat] || cat;
             const saved = localStorage.getItem(`kendo_league_blocks_${keyName}`) || 
@@ -239,6 +259,7 @@
 
             return [];
         }
+
         function calculatePosResult(redPts, whitePts) {
             let redCount = (redPts || []).filter(p => p !== '▲' && p !== 'CLEAR' && p !== '引分').length;
             let whiteCount = (whitePts || []).filter(p => p !== '▲' && p !== 'CLEAR' && p !== '引分').length;
