@@ -201,12 +201,13 @@
             let savedScoresMap = new Map();
             let rawMatches = [];
 
-            // 1. LocalStorage の入力済み結果を先行取得（最優先データソース）
+            // LocalStorage の保存済みスコアを取得
             let localSaved = [];
             try {
                 localSaved = JSON.parse(localStorage.getItem(`kendo_matches_${currentCategory}`)) || JSON.parse(localStorage.getItem('kendo_matches')) || [];
             } catch(e){}
 
+            // API (Supabase) から対戦一覧を取得
             try {
                 const res = await fetch(`/api/matches?category=${encodeURIComponent(currentCategory)}`);
                 if (res.ok) rawMatches = await res.json();
@@ -214,72 +215,74 @@
                 rawMatches = localSaved;
             }
 
-            // 2. APIデータとLocalStorageデータをマージ（LocalStorageの完了状態を優先）
-            const combined = [...rawMatches, ...localSaved];
-            combined.filter(m => !m.category || m.category === currentCategory).forEach((m, i) => {
-                const parsed = parseMatchData(m, i);
-                const key1 = `${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`;
-                const key2 = `${currentCategory}_${parsed.league}_${parsed.whiteTeam}_${parsed.redTeam}`;
-                
-                // すでに登録済みの未実施データがある場合、完了（isFinished）データを優先上書き
-                const existing = savedScoresMap.get(key1);
-                if (!existing || parsed.isFinished) {
-                    savedScoresMap.set(key1, parsed);
-                    savedScoresMap.set(key2, parsed);
-                    if (parsed.id) {
-                        savedScoresMap.set(`${currentCategory}_${parsed.id}`, parsed);
-                        savedScoresMap.set(`${parsed.id}`, parsed);
-                    }
+            // LocalStorage側の入力結果（isFinished）をマージ用マップに保持
+            localSaved.forEach(m => {
+                if (m.isFinished) {
+                    const parsed = parseMatchData(m, 0);
+                    if (parsed.dbId) savedScoresMap.set(String(parsed.dbId), parsed);
+                    savedScoresMap.set(`${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`, parsed);
                 }
             });
 
-            let leagueBlocks = getLeagueBlocksFromStorage(currentCategory);
             let cleanMatches = [];
 
-            leagueBlocks.forEach(block => {
-                const leagueName = block.league;
-                const teams = block.teams || [];
+            // APIデータ（Supabase）が存在する場合は、DBの対戦組み合わせ・IDを最優先でセット
+            if (rawMatches && rawMatches.length > 0) {
+                rawMatches.forEach((m, idx) => {
+                    const parsed = parseMatchData(m, idx);
+                    // LocalStorageに完了状態のスコアがあれば上書き復元
+                    const savedState = savedScoresMap.get(String(parsed.dbId)) || 
+                                       savedScoresMap.get(`${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`);
+                    if (savedState && savedState.isFinished) {
+                        parsed.isFinished = true;
+                        parsed.positions = savedState.positions;
+                        parsed.scoreA = savedState.scoreA;
+                        parsed.scoreB = savedState.scoreB;
+                    }
+                    cleanMatches.push(parsed);
+                });
+            } else {
+                // APIにデータが無い場合のみ LocalStorage のリーグ情報から総当たり生成（フォールバック）
+                let leagueBlocks = getLeagueBlocksFromStorage(currentCategory);
+                leagueBlocks.forEach(block => {
+                    const leagueName = block.league;
+                    const teams = block.teams || [];
+                    if (teams.length >= 2) {
+                        let matchIndex = 1;
+                        for (let i = 0; i < teams.length; i++) {
+                            for (let j = i + 1; j < teams.length; j++) {
+                                const teamA = teams[i];
+                                const teamB = teams[j];
+                                const matchId = `${leagueName}_m${matchIndex}`;
+                                const lookupKey = `${currentCategory}_${leagueName}_${teamA}_${teamB}`;
+                                const scoreData = savedScoresMap.get(lookupKey);
 
-                if (teams.length >= 2) {
-                    let matchIndex = 1;
-                    for (let i = 0; i < teams.length; i++) {
-                        for (let j = i + 1; j < teams.length; j++) {
-                            const teamA = teams[i];
-                            const teamB = teams[j];
-                            const lookupKey = `${currentCategory}_${leagueName}_${teamA}_${teamB}`;
-                            const matchId = `${leagueName}_m${matchIndex}`;
-                            const scoreData = savedScoresMap.get(lookupKey) || savedScoresMap.get(`${currentCategory}_${matchId}`) || savedScoresMap.get(matchId);
-
-                            if (scoreData) {
-                                scoreData.id = matchId;
-                                scoreData.category = currentCategory;
-                                scoreData.league = leagueName;
-                                scoreData.title = `第${matchIndex}試合`;
-                                scoreData.redTeam = teamA;
-                                scoreData.whiteTeam = teamB;
-                                cleanMatches.push(scoreData);
-                            } else {
-                                cleanMatches.push({
-                                    id: matchId,
-                                    category: currentCategory,
-                                    league: leagueName,
-                                    title: `第${matchIndex}試合`,
-                                    redTeam: teamA,
-                                    whiteTeam: teamB,
-                                    isFinished: false,
-                                    positions: positions.map(p => ({ position: p, red: [], white: [], result: '引分' }))
-                                });
+                                if (scoreData) {
+                                    scoreData.id = matchId;
+                                    scoreData.title = `第${matchIndex}試合`;
+                                    cleanMatches.push(scoreData);
+                                } else {
+                                    cleanMatches.push({
+                                        id: matchId,
+                                        category: currentCategory,
+                                        league: leagueName,
+                                        title: `第${matchIndex}試合`,
+                                        redTeam: teamA,
+                                        whiteTeam: teamB,
+                                        isFinished: false,
+                                        positions: positions.map(p => ({ position: p, red: [], white: [], result: '引分' }))
+                                    });
+                                }
+                                matchIndex++;
                             }
-                            matchIndex++;
                         }
                     }
-                }
-            });
+                });
+            }
 
             matchesList = cleanMatches;
             renderMatchGroups();
         }
-
         // 部門名（和名）とstep2の英名キーのマッピング
         const categoryKeyMap = {
             '小学生低学年': 'low_elem',
@@ -320,6 +323,7 @@
             let league = m.league || m.league_name || m.stage || m.group_name || m.group || 'Aリーグ';
             let title = m.title || m.match_name || `第${index + 1}試合`;
 
+            // DB上の teamA / teamB または team_a / team_b を最優先で取得
             const redTeam = m.teamA || m.team_a || m.team1 || m.team1_name || m.red_team || m.redTeam || (m.teams && m.teams[0]) || '赤チーム';
             const whiteTeam = m.teamB || m.team_b || m.team2 || m.team2_name || m.white_team || m.whiteTeam || (m.teams && m.teams[1]) || '白チーム';
 
@@ -331,7 +335,7 @@
             }));
 
             return {
-                dbId: m.id || m.match_id || null,
+                dbId: m.id || m.match_id || null, // Supabaseの主キーID（数値やUUID）
                 id: m.id || `${league}_m${index + 1}`,
                 category: m.category || currentCategory,
                 league,
@@ -344,7 +348,6 @@
                 positions: m.positions || posData
             };
         }
-
         function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
