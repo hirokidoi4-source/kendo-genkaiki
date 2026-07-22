@@ -120,85 +120,105 @@
 
         async function fetchSpectatorData() {
             let savedMap = new Map();
+            let rawMatches = [];
             const keyName = categoryKeyMap[currentCategory] || currentCategory;
 
-            try {
-                const res = await fetch('/api/matches');
-                if (res.ok) {
-                    const apiData = await res.json();
-                    apiData.forEach(m => {
-                        const cat = m.category || currentCategory;
-                        savedMap.set(`${cat}_${m.id}`, m);
-                    });
-                }
-            } catch(e) {}
-
+            // LocalStorage のフォールバックデータ取得
+            let localSaved = [];
             try {
                 const rawLocal = localStorage.getItem(`kendo_matches_${keyName}`) || 
                                  localStorage.getItem(`kendo_matches_${currentCategory}`) || 
                                  localStorage.getItem('kendo_matches');
-                
-                const localData = JSON.parse(rawLocal) || [];
-                localData.forEach(m => {
-                    const cat = m.category || currentCategory;
-                    if (m.id) savedMap.set(`${cat}_${m.id}`, m);
-                    const k1 = `${cat}_${m.league}_${m.redTeam}_${m.whiteTeam}`;
-                    const k2 = `${cat}_${m.league}_${m.whiteTeam}_${m.redTeam}`;
-                    savedMap.set(k1, m);
-                    savedMap.set(k2, m);
-                });
+                localSaved = JSON.parse(rawLocal) || [];
             } catch(e) {}
 
-            const leagueBlocks = getLeagueBlocksFromStorage(currentCategory);
-            let matchList = [];
+            // API (Supabase) から対戦一覧を取得し、選択中カテゴリでフィルタリング
+            try {
+                const res = await fetch('/api/matches');
+                if (res.ok) {
+                    const allMatches = await res.json();
+                    const catKey = categoryKeyMap[currentCategory] || currentCategory;
+                    rawMatches = allMatches.filter(m => 
+                        m.category === currentCategory || m.category === catKey
+                    );
+                }
+            } catch (e) {
+                rawMatches = localSaved;
+            }
 
-            leagueBlocks.forEach(block => {
-                const leagueName = block.league;
-                const teams = block.teams || [];
+            // スコア復元用マップ作成
+            localSaved.forEach(m => {
+                const k1 = `${m.category || currentCategory}_${m.league}_${m.teamA || m.redTeam}_${m.teamB || m.whiteTeam}`;
+                savedMap.set(k1, m);
+            });
 
-                if (teams.length >= 2) {
-                    let matchIndex = 1;
-                    for (let i = 0; i < teams.length; i++) {
-                        for (let j = i + 1; j < teams.length; j++) {
-                            const teamA = teams[i];
-                            const teamB = teams[j];
-                            const matchId = `${leagueName}_m${matchIndex}`;
-                            const lookupKey = `${currentCategory}_${leagueName}_${teamA}_${teamB}`;
+            let cleanMatches = [];
 
-                            const saved = savedMap.get(`${currentCategory}_${matchId}`) || savedMap.get(lookupKey);
+            // Supabaseにデータが存在する場合はそれを最優先で利用（赤白配置・試合順をそのまま保持）
+            if (rawMatches && rawMatches.length > 0) {
+                rawMatches.forEach((m, idx) => {
+                    const redTeam = m.teamA || m.team_a || m.redTeam || (m.teams && m.teams[0]) || '赤チーム';
+                    const whiteTeam = m.teamB || m.team_b || m.whiteTeam || (m.teams && m.teams[1]) || '白チーム';
+                    
+                    let rawLeague = m.league || m.league_name || m.stage || '';
+                    let league = 'Aリーグ';
+                    const leagueMatch = (rawLeague + ' ' + (m.title || '')).match(/([A-ZＡ-Ｚa-zａ-ｚ1-9１-９]+リーグ)/);
+                    if (leagueMatch) league = leagueMatch[1];
+                    else if (rawLeague && rawLeague !== '予選リーグ') league = rawLeague;
 
-                            if (saved) {
-                                matchList.push({
-                                    ...saved,
-                                    id: matchId,
-                                    category: currentCategory,
-                                    league: leagueName,
-                                    title: `第${matchIndex}試合`,
-                                    redTeam: teamA,
-                                    whiteTeam: teamB
-                                });
-                            } else {
-                                matchList.push({
+                    const lookupKey = `${m.category || currentCategory}_${league}_${redTeam}_${whiteTeam}`;
+                    const saved = savedMap.get(lookupKey);
+
+                    const posData = positions.map(p => ({ position: p, red: [], white: [], result: '引分' }));
+
+                    cleanMatches.push({
+                        ...m,
+                        id: m.id || `${league}_m${idx + 1}`,
+                        category: currentCategory,
+                        league: league,
+                        title: m.title || `第${idx + 1}試合`,
+                        redTeam: redTeam,
+                        whiteTeam: whiteTeam,
+                        isFinished: (saved && saved.isFinished) || m.isFinished || m.status === 'finished' || false,
+                        positions: (saved && saved.positions) || m.positions || posData
+                    });
+                });
+            } else {
+                // APIにデータがない場合のみ、ブロック構造からフォールバック生成
+                const leagueBlocks = getLeagueBlocksFromStorage(currentCategory);
+                leagueBlocks.forEach(block => {
+                    const leagueName = block.league;
+                    const teams = block.teams || [];
+                    if (teams.length >= 2) {
+                        let matchIndex = 1;
+                        for (let i = 0; i < teams.length; i++) {
+                            for (let j = i + 1; j < teams.length; j++) {
+                                const teamA = teams[i];
+                                const teamB = teams[j];
+                                const matchId = `${leagueName}_m${matchIndex}`;
+                                const lookupKey = `${currentCategory}_${leagueName}_${teamA}_${teamB}`;
+                                const saved = savedMap.get(lookupKey);
+
+                                cleanMatches.push({
                                     id: matchId,
                                     category: currentCategory,
                                     league: leagueName,
                                     title: `第${matchIndex}試合`,
                                     redTeam: teamA,
                                     whiteTeam: teamB,
-                                    isFinished: false,
-                                    positions: positions.map(p => ({ position: p, red: [], white: [], result: '引分' }))
+                                    isFinished: saved ? saved.isFinished : false,
+                                    positions: saved ? saved.positions : positions.map(p => ({ position: p, red: [], white: [], result: '引分' }))
                                 });
+                                matchIndex++;
                             }
-                            matchIndex++;
                         }
                     }
-                }
-            });
+                });
+            }
 
-            spectatorMatches = matchList;
+            spectatorMatches = cleanMatches;
             renderSpectatorView();
         }
-
         function getLeagueBlocksFromStorage(cat) {
             const keyName = categoryKeyMap[cat] || cat;
             const saved = localStorage.getItem(`kendo_league_blocks_${keyName}`) || 
