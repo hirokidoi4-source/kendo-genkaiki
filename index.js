@@ -590,6 +590,51 @@ app.post('/api/tournament/save_league', async (req, res) => {
 });
 
 // =================================================================
+// 🏆 確定した決勝トーナメント表の保存 API
+// =================================================================
+app.post('/api/tournament/save_final', async (req, res) => {
+    const { category, matches } = req.body;
+    try {
+        if (!category || !Array.isArray(matches) || matches.length === 0) {
+            return res.status(400).json({ success: false, error: '有効なデータが送信されませんでした。' });
+        }
+
+        console.log(`[Save Final] ${category} の決勝トーナメントデータ（${matches.length}試合）を保存します。`);
+
+        // 1. 既存の該当部門の「決勝トーナメント」データをクリーンアップ
+        const { error: delError } = await supabase
+            .from('matches')
+            .delete()
+            .eq('category', category)
+            .eq('stage', '決勝トーナメント');
+
+        if (delError) {
+            console.error('[Save Final Error] 既存データの削除に失敗:', delError);
+            return res.status(500).json({ success: false, error: `既存データの削除に失敗しました: ${delError.message}` });
+        }
+
+        // 2. 確定された新しいトーナメントカードを一括インサート
+        const { data, error: insError } = await supabase
+            .from('matches')
+            .insert(matches)
+            .select();
+
+        if (insError) {
+            console.error('[Save Final Error] 新規データの保存に失敗:', insError);
+            return res.status(500).json({ success: false, error: `トーナメント表の保存に失敗しました: ${insError.message}` });
+        }
+
+        console.log(`[Save Final Success] ${data ? data.length : 0}件のトーナメントカードを正常に保存しました。`);
+
+        return res.json({ success: true, count: data ? data.length : 0 });
+
+    } catch (err) {
+        console.error('[Save Final Critical Error]:', err);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// =================================================================
 // 🚀 サーバー起動（待ち受け開始）の記述を追加
 // =================================================================
 app.listen(PORT, () => {
