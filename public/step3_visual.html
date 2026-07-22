@@ -207,10 +207,18 @@
                 localSaved = JSON.parse(localStorage.getItem(`kendo_matches_${currentCategory}`)) || JSON.parse(localStorage.getItem('kendo_matches')) || [];
             } catch(e){}
 
-            // API (Supabase) から対戦一覧を取得
+            // API (Supabase) から対戦一覧を取得し、現在のカテゴリでフィルタリング
             try {
-                const res = await fetch(`/api/matches?category=${encodeURIComponent(currentCategory)}`);
-                if (res.ok) rawMatches = await res.json();
+                const res = await fetch('/api/matches');
+                if (res.ok) {
+                    const allMatches = await res.json();
+                    
+                    // カテゴリの和名・英名キー両方に対応して絞り込み
+                    const catKey = categoryKeyMap[currentCategory] || currentCategory;
+                    rawMatches = allMatches.filter(m => 
+                        m.category === currentCategory || m.category === catKey
+                    );
+                }
             } catch (e) {
                 rawMatches = localSaved;
             }
@@ -280,7 +288,7 @@
 
             matchesList = cleanMatches;
             renderMatchGroups();
-        }        // 部門名（和名）とstep2の英名キーのマッピング
+        }      // 部門名（和名）とstep2の英名キーのマッピング
         const categoryKeyMap = {
             '小学生低学年': 'low_elem',
             '小学生団体': 'elem',
@@ -683,8 +691,11 @@
         closeModal();
         loadMatches();
     }
+
+    // 💡 画面読み込み時に初期化と試合一覧読み込みを実行
+    window.addEventListener('DOMContentLoaded', () => {
         initCategory();
         loadMatches();
-    </script>
-</body>
+    });
+    </script></body>
 </html>
