@@ -215,7 +215,7 @@
                 });
             };
 
-            // === 3. 「組み合わせを確定して保存」ボタンの処理（重複を除去し1つに集約） ===
+            // === 3. 「組み合わせを確定して保存」ボタンの処理（修正版） ===
             document.getElementById('saveBtn').addEventListener('click', async () => {
                 const category = document.getElementById('categorySelect').value;
                 const matches = [];
@@ -230,7 +230,7 @@
                     const teamsInLeague = items.map(li => ({
                         team_name: li.getAttribute('data-team'),
                         organization: li.getAttribute('data-org')
-                    }));
+                    })).filter(t => t.team_name && t.team_name !== '（不戦勝枠）'); // 実在するチームのみ抽出
 
                     if (teamsInLeague.length === 0) return;
 
@@ -239,36 +239,31 @@
                         teams: teamsInLeague.map(t => t.team_name)
                     });
 
-                    let targetSize = teamsInLeague.length > 3 ? 4 : 3;
-                    
-                    while (teamsInLeague.length < targetSize) {
-                        teamsInLeague.push({ team_name: '（不戦勝枠）', organization: 'なし' });
-                    }
-
-                    const maxPromoted = targetSize === 4 ? 2 : 1;
+                    const teamCount = teamsInLeague.length;
+                    const maxPromoted = teamCount >= 4 ? 2 : 1;
                     let matchCount = 1;
 
-                    for (let i = 0; i < teamsInLeague.length; i++) {
-                        for (let j = i + 1; j < teamsInLeague.length; j++) {
+                    // 実在するチーム数(N)に応じて N*(N-1)/2 試合を動的生成（3チームなら3試合、4チームなら6試合）
+                    for (let i = 0; i < teamCount; i++) {
+                        for (let j = i + 1; j < teamCount; j++) {
                             const teamA = teamsInLeague[i].team_name;
                             const teamB = teamsInLeague[j].team_name;
-                            const isBye = teamA === '（不戦勝枠）' || teamB === '（不戦勝枠）';
                             const isSameOrg = teamsInLeague[i].organization === teamsInLeague[j].organization;
 
                             matches.push({
                                 category: category,
                                 stage: '予選リーグ',
                                 title: `${leagueName} 第${matchCount}試合`,
-                                teamA,
-                                teamB,
-                                scoreA: teamA === '（不戦勝枠）' ? 0 : (isBye ? 1 : 0),
-                                scoreB: teamB === '（不戦勝枠）' ? 0 : (isBye ? 1 : 0),
-                                status: isBye ? 'finished' : 'scheduled',
+                                teamA: teamA,
+                                teamB: teamB,
+                                scoreA: 0,
+                                scoreB: 0,
+                                status: 'scheduled',
                                 details: { 
                                     same_org: isSameOrg, 
                                     league: leagueName, 
                                     round: matchCount,
-                                    league_size: targetSize,
+                                    league_size: teamCount,
                                     max_promoted: maxPromoted 
                                 }
                             });
@@ -276,7 +271,6 @@
                         }
                     }
                 });
-
                 if (matches.length === 0) {
                     alert('配置されたチームがありません。');
                     return;
