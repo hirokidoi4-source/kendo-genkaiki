@@ -226,11 +226,10 @@
 
             let cleanMatches = [];
 
-            // APIデータ（Supabase）が存在する場合は、DBの対戦組み合わせ・IDを最優先でセット
             if (rawMatches && rawMatches.length > 0) {
                 rawMatches.forEach((m, idx) => {
                     const parsed = parseMatchData(m, idx);
-                    // LocalStorageに完了状態のスコアがあれば上書き復元
+                    // LocalStorageに完了状態のスコアがあれば復元
                     const savedState = savedScoresMap.get(String(parsed.dbId)) || 
                                        savedScoresMap.get(`${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`);
                     if (savedState && savedState.isFinished) {
@@ -242,7 +241,6 @@
                     cleanMatches.push(parsed);
                 });
             } else {
-                // APIにデータが無い場合のみ LocalStorage のリーグ情報から総当たり生成（フォールバック）
                 let leagueBlocks = getLeagueBlocksFromStorage(currentCategory);
                 leagueBlocks.forEach(block => {
                     const leagueName = block.league;
@@ -282,8 +280,7 @@
 
             matchesList = cleanMatches;
             renderMatchGroups();
-        }
-        // 部門名（和名）とstep2の英名キーのマッピング
+        }        // 部門名（和名）とstep2の英名キーのマッピング
         const categoryKeyMap = {
             '小学生低学年': 'low_elem',
             '小学生団体': 'elem',
@@ -320,10 +317,20 @@
         }
 
         function parseMatchData(m, index) {
-            let league = m.league || m.league_name || m.stage || m.group_name || m.group || 'Aリーグ';
+            // Aリーグ, Bリーグ 等の名称を抽出（title や league から優先判定）
+            let rawLeague = m.league || m.league_name || m.stage || m.group_name || m.group || '';
+            let league = 'Aリーグ';
+            
+            // rawLeague や title から "Xリーグ" を検出
+            const leagueMatch = (rawLeague + ' ' + (m.title || '')).match(/([A-ZＡ-Ｚa-zａ-ｚ1-9１-９]+リーグ)/);
+            if (leagueMatch) {
+                league = leagueMatch[1];
+            } else if (rawLeague && rawLeague !== '予選リーグ') {
+                league = rawLeague;
+            }
+
             let title = m.title || m.match_name || `第${index + 1}試合`;
 
-            // DB上の teamA / teamB または team_a / team_b を最優先で取得
             const redTeam = m.teamA || m.team_a || m.team1 || m.team1_name || m.red_team || m.redTeam || (m.teams && m.teams[0]) || '赤チーム';
             const whiteTeam = m.teamB || m.team_b || m.team2 || m.team2_name || m.white_team || m.whiteTeam || (m.teams && m.teams[1]) || '白チーム';
 
@@ -335,7 +342,7 @@
             }));
 
             return {
-                dbId: m.id || m.match_id || null, // Supabaseの主キーID（数値やUUID）
+                dbId: m.id || m.match_id || null, // Supabaseのプライマリキー(数値ID等)
                 id: m.id || `${league}_m${index + 1}`,
                 category: m.category || currentCategory,
                 league,
@@ -347,8 +354,7 @@
                 scoreB: m.scoreB ?? m.whiteWins ?? 0,
                 positions: m.positions || posData
             };
-        }
-        function renderMatchGroups() {
+        }        function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
                 container.innerHTML = `
