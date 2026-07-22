@@ -40,10 +40,11 @@ app.get('/api/matches', async (req, res) => {
 });
 
 // 試合結果保存
+// 【POST】新規作成（互換性用）
 app.post('/api/match', async (req, res) => {
     try {
-        const { category, stage, title, teamA, teamB, scoreA, scoreB, status, details } = req.body;
-        const parsedDetails = typeof details === 'string' ? JSON.parse(details) : details;
+        const { category, stage, title, teamA, teamB, scoreA, scoreB, status, details, positions } = req.body;
+        const parsedDetails = typeof details === 'string' ? JSON.parse(details) : (details || positions || []);
 
         const { data, error } = await supabase
             .from('matches')
@@ -55,21 +56,48 @@ app.post('/api/match', async (req, res) => {
                 teamB,
                 scoreA: parseInt(scoreA, 10) || 0,
                 scoreB: parseInt(scoreB, 10) || 0,
-                status,
+                status: status || 'finished',
                 details: parsedDetails
             }]);
 
-        if (error) {
-            console.error("Supabase保存エラー:", error);
-            return res.status(500).json({ error: error.message });
-        }
-
-        res.json({ success: true });
+        if (error) throw error;
+        res.json({ success: true, data });
     } catch (err) {
-        console.error("サーバーエラー:", err);
+        console.error("Supabase保存エラー:", err);
         res.status(500).json({ error: err.message });
     }
 });
+
+// 【PUT/POST】指定IDの試合結果更新（Step3 スコア更新用）
+const updateMatchHandler = async (req, res) => {
+    try {
+        const matchId = req.params.id;
+        const { scoreA, scoreB, score_a, score_b, status, details, positions } = req.body;
+        const parsedDetails = typeof details === 'string' ? JSON.parse(details) : (details || positions || []);
+
+        const finalScoreA = parseInt(scoreA ?? score_a ?? 0, 10);
+        const finalScoreB = parseInt(scoreB ?? score_b ?? 0, 10);
+
+        const { data, error } = await supabase
+            .from('matches')
+            .update({
+                scoreA: finalScoreA,
+                scoreB: finalScoreB,
+                status: status || 'finished',
+                details: parsedDetails
+            })
+            .eq('id', matchId);
+
+        if (error) throw error;
+        res.json({ success: true, data });
+    } catch (err) {
+        console.error("Supabase更新エラー:", err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+app.put('/api/matches/:id', updateMatchHandler);
+app.post('/api/matches/:id', updateMatchHandler);
 
 // 【決勝勝ち上がり自動生成付き】試合結果を「更新」または「新規保存」するAPI
 app.post('/api/match_update', async (req, res) => {

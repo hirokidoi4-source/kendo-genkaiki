@@ -607,63 +607,82 @@
             renderPositionRows();
         }
 
+        // ⭕️ 正しい saveScores（Supabase連携が成功するバージョン）
         async function saveScores() {
-            const match = matchesList[currentMatchIndex];
-            const summary = calculateTeamSummary(match.positions);
-            match.isFinished = true;
-            match.teamResult = summary.status;
+        const match = matchesList[currentMatchIndex];
+        const summary = calculateTeamSummary(match.positions);
+        match.isFinished = true;
+        match.teamResult = summary.status;
 
-            const targetId = match.dbId || match.id;
+        const targetId = match.dbId || match.id;
 
-            const payload = {
-                id: targetId,
-                category: currentCategory,
-                league: match.league,
-                title: match.title,
-                redTeam: match.redTeam,
-                whiteTeam: match.whiteTeam,
-                scoreA: summary.redWins,
-                scoreB: summary.whiteWins,
-                status: 'finished',
-                positions: match.positions,
-                isFinished: true,
-                teamResult: summary.status
-            };
+        // Supabaseが要求するフィールド名（teamA, team_a, scoreA, score_a 等）を網羅
+        const payload = {
+            id: targetId,
+            match_id: targetId,
+            category: currentCategory,
+            league: match.league,
+            title: match.title,
+            redTeam: match.redTeam,
+            whiteTeam: match.whiteTeam,
+            teamA: match.redTeam,
+            teamB: match.whiteTeam,
+            team_a: match.redTeam,
+            team_b: match.whiteTeam,
+            scoreA: summary.redWins,
+            scoreB: summary.whiteWins,
+            score_a: summary.redWins,
+            score_b: summary.whiteWins,
+            status: 'finished',
+            positions: match.positions,
+            isFinished: true,
+            teamResult: summary.status
+        };
 
-            try {
-                let res = await fetch(`/api/matches/${targetId}`, {
+        // API送信 (PUT / POST の両ルートを安全に試行)
+        try {
+            let res = await fetch(`/api/matches/${targetId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            if (!res.ok) {
+                res = await fetch(`/api/matches/${targetId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                if (!res.ok) {
-                    await fetch('/api/matches', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                }
-            } catch (err) {
-                console.log('API保存スキップ、LocalStorageのみ保存');
             }
 
-            let saved = [];
-            try {
-                saved = JSON.parse(localStorage.getItem(`kendo_matches_${currentCategory}`)) || [];
-            } catch(e){}
-            
-            const idx = saved.findIndex(m => m.id === match.id || (m.league === match.league && m.redTeam === match.redTeam && m.whiteTeam === match.whiteTeam));
-            if (idx >= 0) saved[idx] = payload;
-            else saved.push(payload);
-
-            localStorage.setItem(`kendo_matches_${currentCategory}`, JSON.stringify(saved));
-            localStorage.setItem('kendo_matches', JSON.stringify(saved));
-
-            alert(`【${currentCategory} ${match.league} ${summary.status}】で確定しました！`);
-            closeModal();
-            loadMatches();
+            if (!res.ok) {
+                await fetch('/api/matches', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            }
+        } catch (err) {
+            console.log('API保存エラー、LocalStorageのみ保存:', err);
         }
 
+        // LocalStorage 保存（フォールバックおよび高速復元用）
+        let saved = [];
+        try {
+            saved = JSON.parse(localStorage.getItem(`kendo_matches_${currentCategory}`)) || [];
+        } catch(e){}
+        
+        const idx = saved.findIndex(m => m.id === match.id || (m.league === match.league && m.redTeam === match.redTeam && m.whiteTeam === match.whiteTeam));
+        if (idx >= 0) saved[idx] = payload;
+        else saved.push(payload);
+
+        localStorage.setItem(`kendo_matches_${currentCategory}`, JSON.stringify(saved));
+        localStorage.setItem('kendo_matches', JSON.stringify(saved));
+
+        alert(`【${currentCategory} ${match.league} ${summary.status}】で確定しました！`);
+        closeModal();
+        loadMatches();
+    }
         initCategory();
         loadMatches();
     </script>
