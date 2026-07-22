@@ -73,7 +73,21 @@ const updateMatchHandler = async (req, res) => {
     try {
         const matchId = req.params.id;
         const { scoreA, scoreB, score_a, score_b, status, details, positions } = req.body;
-        const parsedDetails = typeof details === 'string' ? JSON.parse(details) : (details || positions || []);
+        let parsedDetails = typeof details === 'string' ? JSON.parse(details) : (details || positions || []);
+
+        // 💡 既存の試合データから league や max_promoted などのメタデータを保護・維持する
+        if (matchId) {
+            const { data: existingMatch } = await supabase.from('matches').select('details').eq('id', matchId).single();
+            if (existingMatch && existingMatch.details) {
+                const oldDetails = typeof existingMatch.details === 'string' ? JSON.parse(existingMatch.details) : existingMatch.details;
+                if (oldDetails && typeof oldDetails === 'object' && !Array.isArray(oldDetails)) {
+                    parsedDetails = {
+                        ...oldDetails,
+                        order_list: Array.isArray(parsedDetails) ? parsedDetails : (parsedDetails.order_list || [])
+                    };
+                }
+            }
+        }
 
         const finalScoreA = parseInt(scoreA ?? score_a ?? 0, 10);
         const finalScoreB = parseInt(scoreB ?? score_b ?? 0, 10);
@@ -95,7 +109,6 @@ const updateMatchHandler = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
-
 app.put('/api/matches/:id', updateMatchHandler);
 app.post('/api/matches/:id', updateMatchHandler);
 
