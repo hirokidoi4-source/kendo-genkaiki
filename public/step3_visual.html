@@ -235,20 +235,25 @@
             let cleanMatches = [];
 
             if (rawMatches && rawMatches.length > 0) {
-                rawMatches.forEach((m, idx) => {
-                    const parsed = parseMatchData(m, idx);
-                    // LocalStorageに完了状態のスコアがあれば復元
-                    const savedState = savedScoresMap.get(String(parsed.dbId)) || 
-                                       savedScoresMap.get(`${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`);
-                    if (savedState && savedState.isFinished) {
-                        parsed.isFinished = true;
-                        parsed.positions = savedState.positions;
-                        parsed.scoreA = savedState.scoreA;
-                        parsed.scoreB = savedState.scoreB;
-                    }
-                    cleanMatches.push(parsed);
-                });
-            } else {
+              rawMatches.forEach((m, idx) => {
+                  // 🛡️ 予選データ（preliminary または phase指定なし）のみを対象にし、決勝トーナメント（final）を画面から除外
+                  if (m.phase && m.phase !== 'preliminary') {
+                      return;
+                  }
+
+                  const parsed = parseMatchData(m, idx);
+                  // LocalStorageに完了状態のスコアがあれば復元
+                  const savedState = savedScoresMap.get(String(parsed.dbId)) || 
+                                    savedScoresMap.get(`${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`);
+                  if (savedState && savedState.isFinished) {
+                      parsed.isFinished = true;
+                      parsed.positions = savedState.positions;
+                      parsed.scoreA = savedState.scoreA;
+                      parsed.scoreB = savedState.scoreB;
+                  }
+                  cleanMatches.push(parsed);
+              });
+            }else {
                 let leagueBlocks = getLeagueBlocksFromStorage(currentCategory);
                 leagueBlocks.forEach(block => {
                     const leagueName = block.league;
