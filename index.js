@@ -509,15 +509,22 @@ app.post('/api/tournament/generate', async (req, res) => {
     }
 });
 
-// ＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝
-// 🛡️ 同門（同一所属）のチームが近くにならないよう分散させる関数
+// ＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝
+// 🛡️ 同門（同一所属）のチームが近くにならないよう分散させる関数（ランダムシャッフル機能付き）
 // ＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝
 function optimizeTeamDistribution(teams) {
     if (!teams || teams.length === 0) return [];
     
+    // 💡 毎回異なる対戦表にするため、最初にチーム配列自体をランダムシャッフル
+    const shuffledTeams = [...teams];
+    for (let i = shuffledTeams.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledTeams[i], shuffledTeams[j]] = [shuffledTeams[j], shuffledTeams[i]];
+    }
+
     // 所属（organization）ごとにグループ分け
     const groups = {};
-    teams.forEach(team => {
+    shuffledTeams.forEach(team => {
         const org = team.organization || '無所属';
         if (!groups[org]) groups[org] = [];
         groups[org].push(team);
@@ -542,7 +549,6 @@ function optimizeTeamDistribution(teams) {
 
     return result;
 }
-
 // =================================================================
 // 🚀 サーバー起動（待ち受け開始）の記述を追加
 // =================================================================
