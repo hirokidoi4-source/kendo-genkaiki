@@ -201,26 +201,38 @@
             let savedScoresMap = new Map();
             let rawMatches = [];
 
+            // 1. LocalStorage の入力済み結果を先行取得（最優先データソース）
+            let localSaved = [];
+            try {
+                localSaved = JSON.parse(localStorage.getItem(`kendo_matches_${currentCategory}`)) || JSON.parse(localStorage.getItem('kendo_matches')) || [];
+            } catch(e){}
+
             try {
                 const res = await fetch(`/api/matches?category=${encodeURIComponent(currentCategory)}`);
                 if (res.ok) rawMatches = await res.json();
             } catch (e) {
-                const saved = localStorage.getItem(`kendo_matches_${currentCategory}`) || localStorage.getItem('kendo_matches');
-                if (saved) rawMatches = JSON.parse(saved);
+                rawMatches = localSaved;
             }
 
-            // 現在選択中の部門のデータのみをスコア Map に登録
-            rawMatches.filter(m => !m.category || m.category === currentCategory).forEach((m, i) => {
+            // 2. APIデータとLocalStorageデータをマージ（LocalStorageの完了状態を優先）
+            const combined = [...rawMatches, ...localSaved];
+            combined.filter(m => !m.category || m.category === currentCategory).forEach((m, i) => {
                 const parsed = parseMatchData(m, i);
                 const key1 = `${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`;
                 const key2 = `${currentCategory}_${parsed.league}_${parsed.whiteTeam}_${parsed.redTeam}`;
-                savedScoresMap.set(key1, parsed);
-                savedScoresMap.set(key2, parsed);
-                if (parsed.id) {
-                    savedScoresMap.set(`${currentCategory}_${parsed.id}`, parsed);
-                    savedScoresMap.set(`${parsed.id}`, parsed);
+                
+                // すでに登録済みの未実施データがある場合、完了（isFinished）データを優先上書き
+                const existing = savedScoresMap.get(key1);
+                if (!existing || parsed.isFinished) {
+                    savedScoresMap.set(key1, parsed);
+                    savedScoresMap.set(key2, parsed);
+                    if (parsed.id) {
+                        savedScoresMap.set(`${currentCategory}_${parsed.id}`, parsed);
+                        savedScoresMap.set(`${parsed.id}`, parsed);
+                    }
                 }
             });
+
             let leagueBlocks = getLeagueBlocksFromStorage(currentCategory);
             let cleanMatches = [];
 
@@ -236,7 +248,7 @@
                             const teamB = teams[j];
                             const lookupKey = `${currentCategory}_${leagueName}_${teamA}_${teamB}`;
                             const matchId = `${leagueName}_m${matchIndex}`;
-                            const scoreData = savedScoresMap.get(lookupKey) || savedScoresMap.get(`${currentCategory}_${matchId}`);
+                            const scoreData = savedScoresMap.get(lookupKey) || savedScoresMap.get(`${currentCategory}_${matchId}`) || savedScoresMap.get(matchId);
 
                             if (scoreData) {
                                 scoreData.id = matchId;
@@ -276,10 +288,9 @@
             '中学生女子団体': 'mid_girls'
         };
 
-        // 部門ごとのリーグブロックを取得（未登録なら空配列を返して共通フォールバックを防止）
+        // 部門ごとのリーグブロックを取得
         function getLeagueBlocksFromStorage(cat) {
             const keyName = categoryKeyMap[cat] || cat;
-            // 英名キー（low_elem等）と和名キー（小学生低学年等）の両方を検索
             const saved = localStorage.getItem(`kendo_league_blocks_${keyName}`) || localStorage.getItem(`kendo_league_blocks_${cat}`);
             if (saved) {
                 try {
@@ -293,7 +304,6 @@
                 } catch(e) {}
             }
 
-            // 部門別データがまだない場合は「小学生高学年」のみデフォルトサンプルを表示、その他は空にする
             if (cat === '小学生高学年') {
                 return [
                     { league: 'Aリーグ', teams: ['春日市筑葉会', '大野東剣道スポーツ少年団', '太宰府振武会'] },
@@ -303,8 +313,9 @@
                 ];
             }
 
-            return []; // まだ生成されていない部門は空
+            return [];
         }
+
         function parseMatchData(m, index) {
             let league = m.league || m.league_name || m.stage || m.group_name || m.group || 'Aリーグ';
             let title = m.title || m.match_name || `第${index + 1}試合`;
@@ -320,6 +331,7 @@
             }));
 
             return {
+                dbId: m.id || m.match_id || null,
                 id: m.id || `${league}_m${index + 1}`,
                 category: m.category || currentCategory,
                 league,
@@ -332,6 +344,7 @@
                 positions: m.positions || posData
             };
         }
+
         function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
@@ -591,8 +604,10 @@
             match.isFinished = true;
             match.teamResult = summary.status;
 
+            const targetId = match.dbId || match.id;
+
             const payload = {
-                id: match.id,
+                id: targetId,
                 category: currentCategory,
                 league: match.league,
                 title: match.title,
@@ -607,11 +622,18 @@
             };
 
             try {
-                await fetch(`/api/matches/${match.id}`, {
+                let res = await fetch(`/api/matches/${targetId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+                if (!res.ok) {
+                    await fetch('/api/matches', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                }
             } catch (err) {
                 console.log('API保存スキップ、LocalStorageのみ保存');
             }
@@ -621,18 +643,18 @@
                 saved = JSON.parse(localStorage.getItem(`kendo_matches_${currentCategory}`)) || [];
             } catch(e){}
             
-            const idx = saved.findIndex(m => m.id === match.id);
+            const idx = saved.findIndex(m => m.id === match.id || (m.league === match.league && m.redTeam === match.redTeam && m.whiteTeam === match.whiteTeam));
             if (idx >= 0) saved[idx] = payload;
             else saved.push(payload);
 
             localStorage.setItem(`kendo_matches_${currentCategory}`, JSON.stringify(saved));
-            // 全体保存キーにもバックアップ
             localStorage.setItem('kendo_matches', JSON.stringify(saved));
 
             alert(`【${currentCategory} ${match.league} ${summary.status}】で確定しました！`);
             closeModal();
-            renderMatchGroups();
+            loadMatches();
         }
+
         initCategory();
         loadMatches();
     </script>
