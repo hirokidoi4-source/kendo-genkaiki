@@ -440,12 +440,12 @@
       let currentVal = matchScores[targetCell.pos][`score${targetCell.team}`] || '';
 
       if (tech === '引分') {
-        currentVal = '▲';
+        currentVal = '引分'; // 👈 「▲」から「引分」に修正
       } else if (tech === '反則(▲)') {
-        currentVal = currentVal ? currentVal + '▲' : '▲';
+        currentVal = currentVal && currentVal !== '引分' ? currentVal + '▲' : '▲';
       } else {
         // メ○ や メ などを追記（2本まで）
-        if (currentVal === '▲' || currentVal === '-') currentVal = '';
+        if (currentVal === '▲' || currentVal === '-' || currentVal === '引分') currentVal = '';
         currentVal += tech;
       }
 
@@ -455,7 +455,6 @@
       calculateTotal();
       closeSubModalOnly();
     }
-
     // クリアボタン処理
     function clearTechnique() {
       if (!targetCell) return;
@@ -472,12 +471,11 @@
 
     // 【追加】文字列から「取得部位（本数）」を正確に抽出する補助関数
     function countPoints(scoreStr) {
-      if (!scoreStr || scoreStr === '▲') return 0;
-      // 'メ', 'コ', 'ド', 'ツ' の出現回数をカウント
+      if (!scoreStr) return 0;
+      // 'メ', 'コ', 'ド', 'ツ' の出現回数のみをカウント（引分や▲は自動除外される）
       const matches = scoreStr.match(/[メコドツ]/g);
       return matches ? matches.length : 0;
     }
-
     // 勝数・本数の自動計算と代表戦チェック（修正版）
     function calculateTotal() {
       let winsA = 0, ptsA = 0;
