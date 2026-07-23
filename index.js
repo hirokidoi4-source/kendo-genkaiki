@@ -398,9 +398,9 @@ app.post('/api/tournament/generate', async (req, res) => {
             if (count4 > 0) buildLeagueGroups(count4, 4);
 
         // ==========================================
-        // 🏆 公正な決勝トーナメント自動生成ロジック
+        // 🏆 公正な決勝トーナメント自動生成ロジック（※type === 'final' や 'tournament' 等の時のみ実行）
         // ==========================================
-        } else {
+        } else if (type === 'final' || type === 'tournament') {
             const orgTeams = [...teams];
             const N = orgTeams.length;
 
@@ -478,12 +478,15 @@ app.post('/api/tournament/generate', async (req, res) => {
         }
 
         // --- 1. 既存データの安全な削除 ---
-        const targetStage = type === 'league' ? '予選リーグ' : '決勝トーナメント';
-        const { error: delError } = await supabase
-            .from('matches')
-            .delete()
-            .eq('category', category)
-            .eq('stage', targetStage);
+        let delQuery = supabase.from('matches').delete().eq('category', category);
+
+        // 決勝生成の時だけは予選を消さず、「決勝トーナメント」のみをクリアする
+        if (type === 'final' || type === 'tournament') {
+            delQuery = delQuery.eq('stage', '決勝トーナメント');
+        }
+        // ※ type === 'league' (予選生成) の時は、同部門の古い予選・古い決勝の双方を一括クリアして真っさらにします
+
+        const { error: delError } = await delQuery;
 
         if (delError) {
             console.error(`[Generate Error] 既存の${targetStage}データの削除に失敗:`, delError);
