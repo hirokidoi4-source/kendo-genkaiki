@@ -484,17 +484,19 @@ app.post('/api/tournament/generate', async (req, res) => {
         if (type === 'final' || type === 'tournament') {
             delQuery = delQuery.eq('stage', '決勝トーナメント');
         }
-        // ※ type === 'league' (予選生成) の時は、同部門の古い予選・古い決勝の双方を一括クリアして真っさらにします
+        // ※ type === 'league' (予選生成) の時は、同部門の古い予選・古い決勝の双方を一括クリアして真っにする
 
         const { error: delError } = await delQuery;
 
+        const stageName = type === 'league' ? '予選リーグ' : '決勝トーナメント';
+
         if (delError) {
-            console.error(`[Generate Error] 既存の${targetStage}データの削除に失敗:`, delError);
+            console.error(`[Generate Error] 既存の${stageName}データの削除に失敗:`, delError);
             return res.status(500).json({ error: `既存データのクリーンアップ失敗: ${delError.message}` });
         }
 
         // --- 2. 一括インサートの堅牢化（エラー詳細のログ出力） ---
-        console.log(`[Generate] ${category} (${targetStage}): ${matchesToInsert.length}件の試合データを送信します。`);
+        console.log(`[Generate] ${category} (${stageName}): ${matchesToInsert.length}件の試合データを送信します。`);
         
         const { data: insertedData, error: iError } = await supabase
             .from('matches')
@@ -502,7 +504,7 @@ app.post('/api/tournament/generate', async (req, res) => {
             .select();
 
         if (iError) {
-            console.error(`[Generate Error] ${targetStage}データの保存に失敗:`, iError);
+            console.error(`[Generate Error] ${stageName}データの保存に失敗:`, iError);
             return res.status(500).json({ error: `試合データの保存に失敗しました: ${iError.message}` });
         }
 
@@ -510,7 +512,7 @@ app.post('/api/tournament/generate', async (req, res) => {
 
         return res.json({ 
             success: true, 
-            message: `${category} の${targetStage}（${matchesToInsert.length}試合）を正常に生成・上書きしました。` 
+            message: `${category} の${stageName}（${matchesToInsert.length}試合）を正常に生成・上書きしました。` 
         });
 
     } catch (err) {
@@ -518,7 +520,6 @@ app.post('/api/tournament/generate', async (req, res) => {
         return res.status(500).json({ error: err.message });
     }
 });
-
 // ＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝
 // 🛡️ 同門（同一所属）のチームが近くにならないよう分散させる関数（ランダムシャッフル機能付き）
 // ＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝
