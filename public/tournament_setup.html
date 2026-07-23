@@ -16,7 +16,8 @@
                 <p class="text-xs text-gray-500 mt-1">予選の結果から自動で進出チームを算出。同門を避けたトーナメント表を即座に構築します。</p>
             </div>
             <div class="flex gap-3 items-center">
-                <a id="jumpToStep3Btn" href="/step3.html" class="hidden bg-orange-500 hover:bg-orange-600 text-white font-black py-2 px-5 rounded shadow animate-bounce transition flex items-center gap-1 text-sm">
+                <!-- 💡 href は JavaScript (loadCategoryTeams) 内で動的に ?category=... を付与します -->
+                <a id="jumpToStep3Btn" href="/final_input.html" class="hidden bg-orange-500 hover:bg-orange-600 text-white font-black py-2 px-5 rounded shadow animate-bounce transition flex items-center gap-1 text-sm">
                     📝 そのまま試合結果入力へ進む ➔
                 </a>
                 <button id="saveBtn" class="bg-indigo-600 text-white font-bold py-2 px-6 rounded shadow hover:bg-indigo-700 transition">
@@ -84,6 +85,11 @@
             const slotContainer = document.getElementById('slotSelectorContainer');
             const modeBadge = document.getElementById('modeBadge');
             const selectorTitle = document.getElementById('selectorTitle');
+            
+            // 💡 カテゴリ変更時にボタンのリンク先パラメータも更新
+            const jumpBtn = document.getElementById('jumpToStep3Btn');
+            if (jumpBtn) jumpBtn.href = `/final_input.html?category=${category}`;
+
             slotContainer.innerHTML = ''; 
 
             try {
@@ -112,7 +118,6 @@
                     selectorTitle.innerText = '▼ 予選結果（勝者数）に基づき、自動選出されています（同点時の手動調整も可能）';
 
                     const teamStats = {};
-                    // 各リーグの進出可能枠（max_promoted）をキャッシュする
                     const leagueMaxPromotedMap = {};
 
                     filteredTeams.forEach(t => {
@@ -122,7 +127,6 @@
                     leagueMatches.forEach(m => {
                         const leagueName = m.details && m.details.league ? m.details.league : 'Aリーグ';
                         
-                        // 🌟②【改善】試合データ内の max_promoted (進出可能数) を取得・保存
                         if (m.details && m.details.max_promoted !== undefined) {
                             leagueMaxPromotedMap[leagueName] = m.details.max_promoted;
                         }
@@ -133,7 +137,6 @@
                         teamStats[m.teamA].league = leagueName;
                         teamStats[m.teamB].league = leagueName;
 
-                        // 🌟 details または positions から対戦・取得本数を集計
                         let posData = null;
                         if (m.details) {
                             let rawDet = typeof m.details === 'string' ? JSON.parse(m.details) : m.details;
@@ -165,7 +168,8 @@
                                 teamStats[m.teamA].wins += 1;
                                 teamStats[m.teamB].wins += 1;
                             }
-                        }                    });
+                        }
+                    });
 
                     const leagues = {};
                     Object.values(teamStats).forEach(stat => {
@@ -183,11 +187,9 @@
                         const firstTeam = leagues[lName][0]?.team.team_name || '';
                         const secondTeam = leagues[lName][1]?.team.team_name || '';
 
-                        // どのリーグであっても1位の枠は必ず生成
                         createSlotSelect(slotContainer, `slot_${slotIdx}`, `${lName} 1位`, filteredTeams, firstTeam);
                         slotIdx++;
 
-                        // 🌟②【改善】進出可能枠(max_promoted)が2以上の時（＝4チームリーグなど）のみ、2位の枠を生成する
                         const maxPromoted = leagueMaxPromotedMap[lName] !== undefined ? leagueMaxPromotedMap[lName] : 2; 
                         if (maxPromoted >= 2) {
                             createSlotSelect(slotContainer, `slot_${slotIdx}`, `${lName} 2位`, filteredTeams, secondTeam);
@@ -253,7 +255,6 @@
             container.appendChild(wrapper);
         };
 
-        // === 🌟①＆②の改善：同門隔離を保持しつつ、左の山と右の山へ【交互かつ均等】に配置する処理 ===
         window.autoDrawFinals = () => {
             const selectedTeams = [];
             const selects = document.querySelectorAll('.team-slot-select');
@@ -274,7 +275,6 @@
                 return;
             }
 
-            // 母体ごとにグループ分けする
             const orgGroups = {};
             selectedTeams.forEach(t => {
                 if (!orgGroups[t.organization]) orgGroups[t.organization] = [];
@@ -283,8 +283,6 @@
 
             const leftBracketTeams = [];
             const rightBracketTeams = [];
-
-            // 🌟①【改善】同門を左右に分けつつ、全体が左の山に偏らないよう、追加先を交互にするフラグを導入
             let flipToggle = true;
 
             Object.keys(orgGroups).forEach(org => {
@@ -298,11 +296,9 @@
                         else leftBracketTeams.push(team);
                     }
                 });
-                // 別の母体に映るタイミングでトグルを反転させ、特定の山への偏りを相殺する
                 flipToggle = !flipToggle;
             });
 
-            // 万が一、左右の枚数差が2枚以上開いた場合の最終均等化調整
             const allAssigned = [...leftBracketTeams, ...rightBracketTeams];
             const finalLeft = [];
             const finalRight = [];
@@ -383,6 +379,7 @@
             });
         });
 
+        // 💡 決勝トーナメント確定ボタンのリスナー処理
         document.getElementById('saveBtn').addEventListener('click', async () => {
             const category = document.getElementById('categorySelect').value;
             
@@ -406,47 +403,30 @@
                 return;
             }
 
-            const matches = [];
-            let matchIndex = 1;
-            for (let i = 0; i < finalSortedTeams.length; i += 2) {
-                const teamA = finalSortedTeams[i].team_name;
-                const teamB = finalSortedTeams[i + 1] ? finalSortedTeams[i + 1].team_name : '（シード）';
-
-                matches.push({
-                    category: category,
-                    stage: '決勝トーナメント',
-                    title: `決勝T 1回戦 第${matchIndex}試合`,
-                    teamA: teamA,
-                    teamB: teamB,
-                    scoreA: 0,
-                    scoreB: 0,
-                    status: teamB === '（シード）' ? 'finished' : 'scheduled', 
-                    details: []
-                });
-                matchIndex++;
-            }
-
             try {
                 const btn = document.getElementById('saveBtn');
-                btn.innerText = '配信中...';
+                btn.innerText = 'トーナメント構築中...';
                 btn.classList.add('opacity-50', 'cursor-not-allowed');
                 btn.style.pointerEvents = 'none';
 
-                const res = await fetch('/api/tournament/save_final', {
+                // 💡 /api/tournament/generate を呼び出してシード処理＆自動進出を含めて生成
+                const res = await fetch('/api/tournament/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ category, matches })
+                    body: JSON.stringify({ 
+                        category: category, 
+                        type: 'final', 
+                        teams: finalSortedTeams.map(t => t.team_name) 
+                    })
                 });
                 const result = await res.json();
 
                 if (result.success) {
-                    alert(`🏆 決勝トーナメント表を確定しました！\n観客画面にリアルタイム配信しました。`);
-                    const jumpBtn = document.getElementById('jumpToStep3Btn');
-                    if (jumpBtn) {
-                        jumpBtn.classList.remove('hidden');
-                    }
+                    alert(`🏆 決勝トーナメント表を確定・生成しました！`);
+                    // 💡 保存完了後、新しい決勝入力画面（final_input.html）へ自動遷移
+                    window.location.href = `/final_input.html?category=${category}`;
                 } else {
-                    alert('❌ 保存エラー: ' + result.error);
+                    alert('❌ 保存エラー: ' + (result.error || result.message));
                 }
             } catch (err) {
                 console.error(err);
