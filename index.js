@@ -26,7 +26,6 @@ if (supabaseUrl && supabaseKey) {
     supabase = createClient(supabaseUrl, supabaseKey);
 } else {
     console.error("❌ CRITICAL ERROR: Supabase環境変数が取得できませんでした。本番環境のEnvironment設定を確認してください。");
-    // プロセスがクラッシュして死ぬのを防ぐため、ダミーで初期化するか一旦保留にする
     supabase = createClient("https://dummy-url-prevent-crash.supabase.co", "dummy-key");
 }
 
@@ -39,8 +38,7 @@ app.get('/api/matches', async (req, res) => {
     res.json(data || []);
 });
 
-// 試合結果保存
-// 【POST】新規作成（互換性用）
+// 試合結果保存（新規作成用・互換性維持）
 app.post('/api/match', async (req, res) => {
     try {
         const { category, stage, title, teamA, teamB, scoreA, scoreB, status, details, positions } = req.body;
@@ -68,14 +66,13 @@ app.post('/api/match', async (req, res) => {
     }
 });
 
-// 【PUT/POST】指定IDの試合結果更新（Step3 スコア更新用）
+// 指定IDの試合結果更新（Step3 スコア更新用）
 const updateMatchHandler = async (req, res) => {
     try {
         const matchId = req.params.id;
         const { scoreA, scoreB, score_a, score_b, status, details, positions } = req.body;
         let parsedDetails = typeof details === 'string' ? JSON.parse(details) : (details || positions || []);
 
-        // 💡 既存の試合データから league や max_promoted などのメタデータを保護・維持する
         if (matchId) {
             const { data: existingMatch } = await supabase.from('matches').select('details').eq('id', matchId).single();
             if (existingMatch && existingMatch.details) {
@@ -112,6 +109,88 @@ const updateMatchHandler = async (req, res) => {
 app.put('/api/matches/:id', updateMatchHandler);
 app.post('/api/matches/:id', updateMatchHandler);
 
+// 🏆 決勝トーナメントの自動勝ち上がり専用関数（NaNバグ修正版）
+async function autoAdvanceTournament({ category, title, teamA, teamB, scoreA, scoreB, parsedDetails }) {
+    const { data: rawFinals } = await supabase.from('matches').select('*').eq('stage', '決勝トーナメント');
+    const allFinals = (rawFinals || []).filter(m => m.category === category || !category);
+
+    const getWinnerName = (m) => {
+        if (!m || m.status !== 'finished') return null;
+        const det = typeof m.details === 'string' ? JSON.parse(m.details) : m.details;
+        if (det && det.winnerTeam) return det.winnerTeam;
+        if (m.scoreA > m.scoreB) return m.teamA;
+        if (m.scoreB > m.scoreA) return m.teamB;
+        return null;
+    };
+
+    const currentTitle = title || '';
+    
+    // 💡 修正: 全角数字・半角数字・表記揺れ（スペース有無など）に対応する抽出ロジック
+    const normalizeNum = (str) => {
+        if (!str) return 0;
+        // 全角数字を半角数字に変換
+        const half = str.replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xfee0));
+        return parseInt(half, 10) || 0;
+    };
+
+    // "1回戦 第1試合", "1回戦第1試合" などの表記に対応
+    const roundMatch = currentTitle.match(/([0-9０-９]+)回戦/);
+    const matchMatch = currentTitle.match(/第([0-9０-９]+)試合/);
+
+    if (!roundMatch || !matchMatch) {
+        console.warn(`[Auto Advance Skip] タイトル "${currentTitle}" から回戦数・試合番号を取得できませんでした。`);
+        return;
+    }
+
+    const roundNum = normalizeNum(roundMatch[1]);
+    const matchNum = normalizeNum(matchMatch[1]);
+    const pairMatchNum = (matchNum % 2 === 1) ? matchNum + 1 : matchNum - 1;
+    const nextMatchNum = Math.ceil(matchNum / 2);
+
+    const currentMatch = allFinals.find(m => m.title && m.title.includes(`${roundNum}回戦 第${matchNum}試合`));
+    const pairMatch = allFinals.find(m => m.title && m.title.includes(`${roundNum}回戦 第${pairMatchNum}試合`));
+
+    const currentScoreA = parseInt(scoreA, 10) || 0;
+    const currentScoreB = parseInt(scoreB, 10) || 0;
+
+    const winnerCurrent = getWinnerName(currentMatch) 
+        || (parsedDetails && parsedDetails.winnerTeam) 
+        || (currentScoreA > currentScoreB ? teamA : (currentScoreB > currentScoreA ? teamB : null));
+    const winnerPair = getWinnerName(pairMatch);
+
+    console.log(`[Auto Advance] ${roundNum}回戦 第${matchNum}試合勝者: ${winnerCurrent}, ペア(第${pairMatchNum}試合)勝者: ${winnerPair}`);
+
+    if (winnerCurrent || winnerPair) {
+        const winnerA = (matchNum % 2 === 1) ? (winnerCurrent || '未定') : (winnerPair || '未定');
+        const winnerB = (matchNum % 2 === 1) ? (winnerPair || '未定') : (winnerCurrent || '未定');
+
+        const nextTitle = `${roundNum + 1}回戦 第${nextMatchNum}試合`;
+        const existingNextMatch = allFinals.find(m => m.title && m.title.includes(nextTitle));
+
+        if (existingNextMatch) {
+            console.log(`[Auto Advance] 既存の ${nextTitle} を更新します: ${winnerA} vs ${winnerB}`);
+            await supabase.from('matches').update({
+                teamA: winnerA !== '未定' ? winnerA : existingNextMatch.teamA,
+                teamB: winnerB !== '未定' ? winnerB : existingNextMatch.teamB
+            }).eq('id', existingNextMatch.id);
+        } else {
+            console.log(`[Auto Advance] 新規に ${nextTitle} を作成します: ${winnerA} vs ${winnerB}`);
+            await supabase.from('matches').insert([{
+                category: category || currentMatch?.category,
+                stage: '決勝トーナメント',
+                title: nextTitle,
+                teamA: winnerA,
+                teamB: winnerB,
+                scoreA: 0,
+                scoreB: 0,
+                status: 'scheduled',
+                details: []
+            }]);
+        }
+    }
+}
+
+
 // 【決勝勝ち上がり自動生成付き】試合結果を「更新」または「新規保存」するAPI
 app.post('/api/match_update', async (req, res) => {
     try {
@@ -122,8 +201,6 @@ app.post('/api/match_update', async (req, res) => {
             const { data: existingMatch } = await supabase.from('matches').select('details').eq('id', id).single();
             if (existingMatch && existingMatch.details) {
                 const oldDetails = typeof existingMatch.details === 'string' ? JSON.parse(existingMatch.details) : existingMatch.details;
-                
-                // 💡 既存のメタデータ（league情報等）があれば、それを保持したまま order_list のみ更新する
                 if (oldDetails && typeof oldDetails === 'object' && !Array.isArray(oldDetails)) {
                     parsedDetails = {
                         ...oldDetails,
@@ -156,57 +233,9 @@ app.post('/api/match_update', async (req, res) => {
             result = data;
         }
 
-        // 🏆 決勝トーナメントの自動勝ち上がり処理（※既存のコードをそのまま維持）
+        // 🏆 決勝トーナメントの勝ち上がりロジック実行（外部関数呼び出し）
         if (status === 'finished' && stage === '決勝トーナメント') {
-            const { data: allFinals } = await supabase.from('matches').select('*').eq('category', category).eq('stage', '決勝トーナメント');
-            
-            const getWinnerName = (m) => {
-                if (!m || m.status !== 'finished') return null;
-                return m.scoreA > m.scoreB ? m.teamA : m.teamB;
-            };
-
-            const m1 = allFinals.find(m => m.title.includes('1回戦 第1試合'));
-            const m2 = allFinals.find(m => m.title.includes('1回戦 第2試合'));
-            const m3 = allFinals.find(m => m.title.includes('1回戦 第3試合'));
-            const semi1 = allFinals.find(m => m.title.includes('準決勝 第1試合'));
-            const semi2 = allFinals.find(m => m.title.includes('準決勝 第2試合'));
-            const fin = allFinals.find(m => m.title.includes('決勝戦'));
-
-            if (m1 && m2 && m1.status === 'finished' && m2.status === 'finished' && !semi1) {
-                const w1 = getWinnerName(m1);
-                const w2 = getWinnerName(m2);
-                if (w1 && w2) {
-                    await supabase.from('matches').insert([{
-                        category, stage: '決勝トーナメント', title: '準決勝 第1試合',
-                        teamA: w1, teamB: w2, scoreA: 0, scoreB: 0, status: 'scheduled', details: []
-                    }]);
-                }
-            }
-
-            if (m3 && m3.status === 'finished' && !semi2) {
-                const w3 = getWinnerName(m3);
-                if (w3) {
-                    await supabase.from('matches').insert([{
-                        category, stage: '決勝トーナメント', title: '準決勝 第2試合',
-                        teamA: w3, teamB: '（シードにより不戦勝）', scoreA: 1, scoreB: 0, status: 'finished', details: []
-                    }]);
-                }
-            }
-
-            const { data: updatedFinals } = await supabase.from('matches').select('*').eq('category', category).eq('stage', '決勝トーナメント');
-            const s1 = updatedFinals.find(m => m.title.includes('準決勝 第1試合'));
-            const s2 = updatedFinals.find(m => m.title.includes('準決勝 第2試合'));
-
-            if (s1 && s2 && s1.status === 'finished' && s2.status === 'finished' && !fin) {
-                const winnerSemi1 = getWinnerName(s1);
-                const winnerSemi2 = s2.teamA;
-                if (winnerSemi1 && winnerSemi2) {
-                    await supabase.from('matches').insert([{
-                        category, stage: '決勝トーナメント', title: '🏆 決勝戦',
-                        teamA: winnerSemi1, teamB: winnerSemi2, scoreA: 0, scoreB: 0, status: 'scheduled', details: []
-                    }]);
-                }
-            }
+            await autoAdvanceTournament({ category, title, teamA, teamB, scoreA, scoreB, parsedDetails });
         }
 
         res.json({ success: true, data: result });
@@ -254,7 +283,6 @@ app.post('/api/teams/import', async (req, res) => {
                 error: `既存データのクリーンアップに失敗しました。SupabaseのRLS設定（DELETE権限）を確認してください。詳細: ${deleteError.message}` 
             });
         }
-        console.log('[Import] 既存データのクリーンアップが正常に完了しました（0件になりました）。');
 
         const categoryMap = {
             '小学生低学年': 'low_elem',
@@ -270,10 +298,6 @@ app.post('/api/teams/import', async (req, res) => {
         const formattedTeams = incomingTeams.map((t, index) => {
             const rawCategory = (t.category || '').trim();
             const mappedCategory = categoryMap[rawCategory];
-
-            if (!mappedCategory) {
-                console.warn(`[Import Warning] 未定義の部門名が検出されました(${index + 1}行目): "${rawCategory}"。そのまま登録を試みます。`);
-            }
 
             return {
                 category: mappedCategory || rawCategory, 
@@ -292,8 +316,6 @@ app.post('/api/teams/import', async (req, res) => {
             return res.status(500).json({ success: false, error: `新規データの登録に失敗しました: ${insertError.message}` });
         }
 
-        console.log(`[Import Success] インポートが正常に完了しました。登録件数: ${formattedTeams.length}件`);
-        
         return res.json({ 
             success: true, 
             count: formattedTeams.length,
@@ -306,13 +328,10 @@ app.post('/api/teams/import', async (req, res) => {
     }
 });
 
-// =================================================================
-// ⚔️ 公正なトーナメント配置・部門別生成 API
-// =================================================================
+// ⚔️ トーナメント配置・部門別生成 API
 app.post('/api/tournament/generate', async (req, res) => {
     const { category, type } = req.body;
     try {
-        // 1. 対象部門のエントリーチームのみをSupabaseから取得
         const { data: teams, error: tError } = await supabase
             .from('teams')
             .select('*')
@@ -323,9 +342,6 @@ app.post('/api/tournament/generate', async (req, res) => {
 
         let matchesToInsert = [];
 
-        // ==========================================
-        // 📊 予選リーグの自動生成ロジック
-        // ==========================================
         if (type === 'league') {
             const optimizedTeams = optimizeTeamDistribution(teams);
             const totalTeams = optimizedTeams.length;
@@ -397,9 +413,6 @@ app.post('/api/tournament/generate', async (req, res) => {
             if (count3 > 0) buildLeagueGroups(count3, 3);
             if (count4 > 0) buildLeagueGroups(count4, 4);
 
-        // ==========================================
-        // 🏆 公正な決勝トーナメント自動生成ロジック（※type === 'final' や 'tournament' 等の時のみ実行）
-        // ==========================================
         } else if (type === 'final' || type === 'tournament') {
             const orgTeams = [...teams];
             const N = orgTeams.length;
@@ -477,17 +490,12 @@ app.post('/api/tournament/generate', async (req, res) => {
             }
         }
 
-        // --- 1. 既存データの安全な削除 ---
         let delQuery = supabase.from('matches').delete().eq('category', category);
-
-        // 決勝生成の時だけは予選を消さず、「決勝トーナメント」のみをクリアする
         if (type === 'final' || type === 'tournament') {
             delQuery = delQuery.eq('stage', '決勝トーナメント');
         }
-        // ※ type === 'league' (予選生成) の時は、同部門の古い予選・古い決勝の双方を一括クリアして真っにする
 
         const { error: delError } = await delQuery;
-
         const stageName = type === 'league' ? '予選リーグ' : '決勝トーナメント';
 
         if (delError) {
@@ -495,9 +503,6 @@ app.post('/api/tournament/generate', async (req, res) => {
             return res.status(500).json({ error: `既存データのクリーンアップ失敗: ${delError.message}` });
         }
 
-        // --- 2. 一括インサートの堅牢化（エラー詳細のログ出力） ---
-        console.log(`[Generate] ${category} (${stageName}): ${matchesToInsert.length}件の試合データを送信します。`);
-        
         const { data: insertedData, error: iError } = await supabase
             .from('matches')
             .insert(matchesToInsert)
@@ -508,7 +513,21 @@ app.post('/api/tournament/generate', async (req, res) => {
             return res.status(500).json({ error: `試合データの保存に失敗しました: ${iError.message}` });
         }
 
-        console.log(`[Generate Success] ${insertedData ? insertedData.length : 0}件の登録に成功しました。`);
+        // 💡 追加入力: 生成時にすでに終了(finished)扱いになっているシード戦を自動勝ち上がり処理する
+        if (type === 'final' || type === 'tournament') {
+            const finishedByes = (insertedData || []).filter(m => m.status === 'finished');
+            for (const match of finishedByes) {
+                await autoAdvanceTournament({
+                    category: match.category,
+                    title: match.title,
+                    teamA: match.teamA,
+                    teamB: match.teamB,
+                    scoreA: match.scoreA,
+                    scoreB: match.scoreB,
+                    parsedDetails: match.details
+                });
+            }
+        }
 
         return res.json({ 
             success: true, 
@@ -520,20 +539,16 @@ app.post('/api/tournament/generate', async (req, res) => {
         return res.status(500).json({ error: err.message });
     }
 });
-// ＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝
-// 🛡️ 同門（同一所属）のチームが近くにならないよう分散させる関数（ランダムシャッフル機能付き）
-// ＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝─＝
+
 function optimizeTeamDistribution(teams) {
     if (!teams || teams.length === 0) return [];
     
-    // 💡 毎回異なる対戦表にするため、最初にチーム配列自体をランダムシャッフル
     const shuffledTeams = [...teams];
     for (let i = shuffledTeams.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [shuffledTeams[i], shuffledTeams[j]] = [shuffledTeams[j], shuffledTeams[i]];
     }
 
-    // 所属（organization）ごとにグループ分け
     const groups = {};
     shuffledTeams.forEach(team => {
         const org = team.organization || '無所属';
@@ -541,13 +556,11 @@ function optimizeTeamDistribution(teams) {
         groups[org].push(team);
     });
 
-    // 所属ごとのチーム数の多い順にソート
     const sortedOrgs = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
 
     const result = [];
     let added = true;
 
-    // 各所属から1チームずつ順番に取り出してインターリーブ（交互に配置）する
     while (added) {
         added = false;
         for (const org of sortedOrgs) {
@@ -561,9 +574,7 @@ function optimizeTeamDistribution(teams) {
     return result;
 }
 
-// =================================================================
-// 💾 手動組み替え後の予選リーグ保存 API（新規追加）
-// =================================================================
+// 💾 手動組み替え後の予選リーグ保存 API
 app.post('/api/tournament/save_league', async (req, res) => {
     const { category, matches } = req.body;
     try {
@@ -571,44 +582,29 @@ app.post('/api/tournament/save_league', async (req, res) => {
             return res.status(400).json({ success: false, error: '有効なデータが送信されませんでした。' });
         }
 
-        console.log(`[Save League] ${category} の組み替え予選データ（${matches.length}試合）を保存します。`);
-
-        // 1. 既存の該当部門の予選リーグデータをクリーンアップ
         const { error: delError } = await supabase
             .from('matches')
             .delete()
             .eq('category', category)
             .eq('stage', '予選リーグ');
 
-        if (delError) {
-            console.error('[Save League Error] 既存データの削除に失敗:', delError);
-            return res.status(500).json({ success: false, error: `既存データの削除に失敗しました: ${delError.message}` });
-        }
+        if (delError) return res.status(500).json({ success: false, error: delError.message });
 
-        // 2. 組み替え後の新しい対戦カードを一括インサート
         const { data, error: insError } = await supabase
             .from('matches')
             .insert(matches)
             .select();
 
-        if (insError) {
-            console.error('[Save League Error] 新規データの保存に失敗:', insError);
-            return res.status(500).json({ success: false, error: `対戦カードの保存に失敗しました: ${insError.message}` });
-        }
-
-        console.log(`[Save League Success] ${data ? data.length : 0}件の対戦カードを正常に上書き保存しました。`);
+        if (insError) return res.status(500).json({ success: false, error: insError.message });
 
         return res.json({ success: true, count: data ? data.length : 0 });
 
     } catch (err) {
-        console.error('[Save League Critical Error]:', err);
         return res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// =================================================================
 // 🏆 確定した決勝トーナメント表の保存 API
-// =================================================================
 app.post('/api/tournament/save_final', async (req, res) => {
     const { category, matches } = req.body;
     try {
@@ -616,44 +612,29 @@ app.post('/api/tournament/save_final', async (req, res) => {
             return res.status(400).json({ success: false, error: '有効なデータが送信されませんでした。' });
         }
 
-        console.log(`[Save Final] ${category} の決勝トーナメントデータ（${matches.length}試合）を保存します。`);
-
-        // 1. 既存の該当部門の「決勝トーナメント」データをクリーンアップ
         const { error: delError } = await supabase
             .from('matches')
             .delete()
             .eq('category', category)
             .eq('stage', '決勝トーナメント');
 
-        if (delError) {
-            console.error('[Save Final Error] 既存データの削除に失敗:', delError);
-            return res.status(500).json({ success: false, error: `既存データの削除に失敗しました: ${delError.message}` });
-        }
+        if (delError) return res.status(500).json({ success: false, error: delError.message });
 
-        // 2. 確定された新しいトーナメントカードを一括インサート
         const { data, error: insError } = await supabase
             .from('matches')
             .insert(matches)
             .select();
 
-        if (insError) {
-            console.error('[Save Final Error] 新規データの保存に失敗:', insError);
-            return res.status(500).json({ success: false, error: `トーナメント表の保存に失敗しました: ${insError.message}` });
-        }
-
-        console.log(`[Save Final Success] ${data ? data.length : 0}件のトーナメントカードを正常に保存しました。`);
+        if (insError) return res.status(500).json({ success: false, error: insError.message });
 
         return res.json({ success: true, count: data ? data.length : 0 });
 
     } catch (err) {
-        console.error('[Save Final Critical Error]:', err);
         return res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// =================================================================
-// 🚀 サーバー起動（待ち受け開始）の記述を追加
-// =================================================================
+// 🚀 サーバー起動
 app.listen(PORT, () => {
     console.log(`[🟢 Server Active] Tournament Manager is running on port ${PORT}`);
 });

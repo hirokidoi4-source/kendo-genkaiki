@@ -213,10 +213,11 @@
                 if (res.ok) {
                     const allMatches = await res.json();
                     
-                    // カテゴリの和名・英名キー両方に対応して絞り込み
+                    // カテゴリの和名・英名キー両方に対応し、かつ「予選リーグ」のデータのみに絞り込み
                     const catKey = categoryKeyMap[currentCategory] || currentCategory;
                     rawMatches = allMatches.filter(m => 
-                        m.category === currentCategory || m.category === catKey
+                        (m.category === currentCategory || m.category === catKey) &&
+                        (m.stage === '予選リーグ' || !m.stage)
                     );
                 }
             } catch (e) {
