@@ -72,12 +72,18 @@
                           <option value="mid_girls">中学女子団体</option>
                       </select>
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <button onclick="generateMatches('league')" class="bg-green-600 text-white text-xs font-bold py-2 rounded hover:bg-green-700 transition shadow-sm">
-                            予選リーグ生成
-                        </button>
-                        <button onclick="generateMatches('tournament')" class="bg-emerald-600 text-white text-xs font-bold py-2 rounded hover:bg-emerald-700 transition shadow-sm">
-                            決勝トーナメント生成
+                    <div class="space-y-2">
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="generateMatches('league')" class="bg-green-600 text-white text-xs font-bold py-2 rounded hover:bg-green-700 transition shadow-sm">
+                                予選リーグ生成
+                            </button>
+                            <button onclick="generateMatches('tournament')" class="bg-emerald-600 text-white text-xs font-bold py-2 rounded hover:bg-emerald-700 transition shadow-sm">
+                                予選結果から決勝生成
+                            </button>
+                        </div>
+                        <!-- 💡 予選なしで全チームから直接トーナメントを生成するボタンを追加 -->
+                        <button onclick="generateDirectTournament()" class="w-full bg-indigo-600 text-white text-xs font-bold py-2.5 rounded hover:bg-indigo-700 transition shadow-sm flex items-center justify-center gap-1">
+                            <span>🏆</span> 全チームでトーナメント直接生成（予選なし）
                         </button>
                     </div>
                 </div>
@@ -186,6 +192,43 @@
             alert('❌ 通信エラーが発生しました。');
         }
     }
+
+    // 💡 予選なしで全登録チームからトーナメントを直接生成する処理
+    async function generateDirectTournament() {
+        const categorySelect = document.getElementById('selectCategory');
+        if (!categorySelect) return alert('❌ 部門選択ボックスが見つかりません');
+
+        const category = categorySelect.value;
+        const categoryText = categorySelect.options[categorySelect.selectedIndex].text;
+
+        const confirmMsg = `【トーナメント直接生成の確認】\n\n` +
+                            `部門: ${categoryText}\n\n` +
+                            `⚠️ 注意 ⚠️\n` +
+                            `予選を行わず、登録されている全チームで直接トーナメントを自動生成します。\n` +
+                            `現在保存されている「${categoryText}」の対戦データは上書きされます。\n\n` +
+                            `この内容で生成を実行しますか？`;
+
+        if (!confirm(confirmMsg)) return;
+
+        try {
+            const res = await fetch('/api/tournament/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ category, type: 'tournament' })
+            });
+            const result = await res.json();
+            if (result.success) {
+                alert('🎯 トーナメントを直接生成しました！');
+                // そのまま決勝トーナメント入力・閲覧画面へジャンプ
+                window.location.href = `/final_input.html?category=${category}`;
+            } else {
+                alert('❌ 生成エラー: ' + (result.error || '生成に失敗しました'));
+            }
+        } catch (err) {
+            alert('❌ 通信エラーが発生しました。');
+        }
+    }
+
     </script>
 </body>
 </html>
