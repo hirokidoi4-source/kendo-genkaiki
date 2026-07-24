@@ -215,24 +215,58 @@ app.post('/api/match_update', async (req, res) => {
     try {
         const { id, category, stage, title, teamA, teamB, scoreA, scoreB, status, details } = req.body;
 
-        if (!id) {
-            return res.status(400).json({ success: false, error: '試合ID(id)は必須です。' });
+        // 1. まず ID による更新を試行
+        let updatedMatch = null;
+        
+        if (id) {
+            const { data, error } = await supabase
+                .from('matches')
+                .update({
+                    scoreA: scoreA,
+                    scoreB: scoreB,
+                    status: status || 'finished',
+                    details: details
+                })
+                .eq('id', id)
+                .select();
+
+            if (!error && data && data.length > 0) {
+                updatedMatch = data[0];
+            }
         }
 
-        const { data: updatedMatch, error: updateError } = await supabase
-            .from('matches')
-            .update({
-                scoreA: scoreA,
-                scoreB: scoreB,
-                status: status || 'finished',
-                details: details
-            })
-            .eq('id', id)
-            .select()
-            .single();
+        // 2. IDで対象が見つからなかった場合（直接生成でIDが変わっている等）、category + stage + title でフォールバック検索・更新
+        if (!updatedMatch) {
+            if (!category || !title) {
+                return res.status(400).json({ success: false, error: '更新対象の試合を特定するための情報（ID または category/title）が不足しています。' });
+            }
 
-        if (updateError) throw updateError;
+            const { data: fallbackData, error: fallbackError } = await supabase
+                .from('matches')
+                .update({
+                    scoreA: scoreA,
+                    scoreB: scoreB,
+                    status: status || 'finished',
+                    details: details
+                })
+                .eq('category', category)
+                .eq('stage', stage || '決勝トーナメント')
+                .eq('title', title)
+                .select();
 
+            if (fallbackError) throw fallbackError;
+
+            if (fallbackData && fallbackData.length > 0) {
+                updatedMatch = fallbackData[0];
+            }
+        }
+
+        // 3. どちらの手段でも見つからない場合
+        if (!updatedMatch) {
+            throw new Error(`該当する試合が見つかりませんでした。(category: ${category}, title: ${title})`);
+        }
+
+        // 4. 勝者が確定していれば自動勝ち上がりを実行
         const winnerTeam = details?.winnerTeam;
         if (winnerTeam) {
             await autoAdvanceTournament(updatedMatch, winnerTeam);
