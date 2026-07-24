@@ -37,18 +37,20 @@
       padding: 20px 10px;
     }
 
+        /* === 1. トーナメントツリーのサイズアップ === */
     .round-column {
       display: flex;
       flex-direction: column;
       justify-content: space-around;
-      min-width: 240px;
+      min-width: 280px; /* 240px -> 280px に拡大 */
       gap: 20px;
     }
 
     .round-title {
       text-align: center;
       font-weight: bold;
-      margin-bottom: 10px;
+      font-size: 18px; /* 追加：ラウンド名の文字を拡大 */
+      margin-bottom: 12px;
       color: var(--primary-color);
     }
 
@@ -56,7 +58,7 @@
       background: var(--card-bg);
       border: 2px solid var(--border-color);
       border-radius: 8px;
-      padding: 12px;
+      padding: 16px; /* 12px -> 16px に拡大（カードを太く） */
       cursor: pointer;
       transition: all 0.2s ease;
       box-shadow: 0 2px 4px rgba(0,0,0,0.05);
@@ -71,8 +73,8 @@
     .team-row {
       display: flex;
       justify-content: space-between;
-      padding: 4px 0;
-      font-size: 14px;
+      padding: 6px 0;
+      font-size: 16px; /* 14px -> 16px に拡大 */
     }
 
     .team-name { font-weight: 500; }
@@ -92,24 +94,24 @@
 
     .modal-content {
       background: #fff;
-      padding: 20px;
+      padding: 24px;
       border-radius: 12px;
       width: 95%;
-      max-width: 650px;
+      max-width: 780px; /* 650px -> 780px に横幅拡大 */
       max-height: 90vh;
       overflow-y: auto;
       box-shadow: 0 10px 25px rgba(0,0,0,0.3);
     }
 
     .modal-header {
-      font-size: 16px;
+      font-size: 18px; /* 16px -> 18px に拡大 */
       font-weight: bold;
       text-align: center;
       background: #1e293b;
       color: #fff;
-      padding: 10px;
+      padding: 12px;
       border-radius: 6px;
-      margin-bottom: 15px;
+      margin-bottom: 18px;
     }
 
     /* 対戦表テーブル */
@@ -117,30 +119,37 @@
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 15px;
-      font-size: 13px;
+      font-size: 16px; /* 13px -> 16px に大幅拡大 */
     }
 
     .match-table th, .match-table td {
-      border: 1px solid #e2e8f0;
-      padding: 8px;
+      border: 1px solid #cbd5e1;
+      padding: 12px 8px; /* 上下余白を拡大してセルを押しやすく */
       text-align: center;
     }
 
     .match-table th { background: #f1f5f9; }
 
-    .position-cell { font-weight: bold; background: #f8fafc; }
+    .position-cell {
+      font-weight: bold;
+      background: #f8fafc;
+      font-size: 15px;
+    }
+
     .score-cell {
       cursor: pointer;
       background: #fff;
+      font-size: 18px; /* 取得部位（メ・コ等）の表示をくっきり太字化 */
+      font-weight: bold;
+      letter-spacing: 2px;
       transition: background 0.2s;
-    }
-    .score-cell:hover { background: #e0f2fe; }
+    }    .score-cell:hover { background: #e0f2fe; }
 
     .total-row {
-      background: #f8fafc;
+      background: #f1f5f9;
       font-weight: bold;
+      font-size: 16px; /* 合計勝数・本数の文字拡大 */
     }
-
     /* 部位選択サブモーダル（ポップアップ） */
     .sub-modal-overlay {
       display: none;
@@ -334,195 +343,315 @@
       <button class="btn btn-secondary" style="width: 100%; padding: 8px;" onclick="closeSubModalOnly()">閉じる</button>
     </div>
   </div>
-  <script>
-    const positions = ['先鋒', '次鋒', '中堅', '副将', '大将'];
-    let currentMatch = null;
-    let targetCell = null; // 現在選択中のセル
+ <script>
+  const positions = ['先鋒', '次鋒', '中堅', '副将', '大将'];
+  let currentMatch = null;
+  let targetCell = null; // 現在選択中のセル
 
-    // ポジションごとのスコア管理 { pos: '先鋒', scoreA: '', scoreB: '' }
-    let matchScores = {};
+  // ポジションごとのスコア管理 { pos: '先鋒', scoreA: '', scoreB: '' }
+  let matchScores = {};
 
-    // サンプルデータ
-    const sampleMatches = [
-      { id: 1, round: 1, teamA: '熊本 神条会道場', teamB: '西武館', winsA: 0, ptsA: 0, winsB: 0, ptsB: 0 },
-      { id: 2, round: 1, teamA: '北部少年剣道クラブ', teamB: '下妻剣道スポーツ少年団', winsA: 0, ptsA: 0, winsB: 0, ptsB: 0 },
-      { id: 3, round: 1, teamA: '黒津少年剣道クラブ', teamB: '森安修道館', winsA: 0, ptsA: 0, winsB: 0, ptsB: 0 },
-      { id: 4, round: 1, teamA: '原田剣心会', teamB: '二天会道場', winsA: 0, ptsA: 0, winsB: 0, ptsB: 0 },
-      { id: 5, round: 2, teamA: '1回戦①勝者', teamB: '1回戦②勝者', winsA: 0, ptsA: 0, winsB: 0, ptsB: 0 },
-      { id: 6, round: 2, teamA: '1回戦③勝者', teamB: '1回戦④勝者', winsA: 0, ptsA: 0, winsB: 0, ptsB: 0 },
-      { id: 7, round: 3, teamA: '準決勝①勝者', teamB: '準決勝②勝者', winsA: 0, ptsA: 0, winsB: 0, ptsB: 0 }
-    ];
-
-    // ツリー描画
-    function renderTree() {
-      const container = document.getElementById('tournament-tree');
-      container.innerHTML = '';
-
-      const rounds = [
-        { num: 1, title: '1回戦' },
-        { num: 2, title: '2回戦' },
-        { num: 3, title: '決勝' }
-      ];
-
-      rounds.forEach(r => {
-        const col = document.createElement('div');
-        col.className = 'round-column';
-        col.innerHTML = `<div class="round-title">${r.title}</div>`;
-
-        const matchesInRound = sampleMatches.filter(m => m.round === r.num);
-        matchesInRound.forEach(m => {
-          const card = document.createElement('div');
-          card.className = 'match-card';
-          card.onclick = () => openModal(m);
-          card.innerHTML = `
-            <div class="team-row"><span class="team-name">${m.teamA}</span><span class="team-score">${m.winsA} (${m.ptsA})</span></div>
-            <div class="team-row"><span class="team-name">${m.teamB}</span><span class="team-score">${m.winsB} (${m.ptsB})</span></div>
-          `;
-          col.appendChild(card);
-        });
-
-        container.appendChild(col);
+  // 🏆 画面生成時に決勝トーナメントの対戦枠をSupabaseへ初期保存する関数
+  async function saveInitialFinalMatches(category, matchesData) {
+    try {
+      const response = await fetch('/api/tournament/save_final', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: category,
+          matches: matchesData
+        })
       });
+
+      const result = await response.json();
+      if (result.success) {
+        console.log('決勝トーナメント初期枠の保存に成功しました:', result.count, '件');
+        if (typeof fetchTreeData === 'function') {
+          await fetchTreeData();
+        }
+      } else {
+        console.error('初期保存失敗:', result.error);
+      }
+    } catch (err) {
+      console.error('通信エラー:', err);
+    }
+  }
+
+  // モーダルを開く（過去の入力データ復元対応）
+  function openModal(match) {
+    currentMatch = match;
+    document.getElementById('modal-match-title').innerText = `${match.teamA || '未定'} vs ${match.teamB || '未定'}`;
+    document.getElementById('th-teamA').innerText = match.teamA || 'チームA';
+    document.getElementById('th-teamB').innerText = match.teamB || 'チームB';
+    document.getElementById('rep-nameA').innerText = match.teamA || 'チームA';
+    document.getElementById('rep-nameB').innerText = match.teamB || 'チームB';
+
+    // DBから保存済みの詳細スコアがあれば取得、無ければ初期化
+    const savedScores = (match.details && match.details.scores) ? match.details.scores : {};
+
+    matchScores = {};
+    const tbody = document.getElementById('position-rows');
+    tbody.innerHTML = '';
+
+    positions.forEach(pos => {
+      // 保存済みデータがあれば復元
+      const scoreA = (savedScores[pos] && savedScores[pos].scoreA) ? savedScores[pos].scoreA : '';
+      const scoreB = (savedScores[pos] && savedScores[pos].scoreB) ? savedScores[pos].scoreB : '';
+      
+      matchScores[pos] = { scoreA, scoreB };
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="score-cell" id="cell-${pos}-A" onclick="openSubModal('${pos}', 'A')">${scoreA || '-'}</td>
+        <td class="position-cell">${pos}</td>
+        <td class="score-cell" id="cell-${pos}-B" onclick="openSubModal('${pos}', 'B')">${scoreB || '-'}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    calculateTotal();
+    document.getElementById('score-modal').style.display = 'flex';
+  }
+  // 技の選択処理（複数取得や先取に対応）
+  function selectTechnique(tech) {
+    if (!targetCell) return;
+
+    let currentVal = matchScores[targetCell.pos][`score${targetCell.team}`] || '';
+
+    if (tech === '引分') {
+      currentVal = '引分';
+    } else if (tech === '反則(▲)') {
+      currentVal = currentVal && currentVal !== '引分' ? currentVal + '▲' : '▲';
+    } else {
+      if (currentVal === '▲' || currentVal === '-' || currentVal === '引分') currentVal = '';
+      currentVal += tech;
     }
 
-    // モーダルを開く
-    function openModal(match) {
-      currentMatch = match;
-      document.getElementById('modal-match-title').innerText = `${match.teamA} vs ${match.teamB}`;
-      document.getElementById('th-teamA').innerText = match.teamA;
-      document.getElementById('th-teamB').innerText = match.teamB;
-      document.getElementById('rep-nameA').innerText = match.teamA;
-      document.getElementById('rep-nameB').innerText = match.teamB;
+    matchScores[targetCell.pos][`score${targetCell.team}`] = currentVal;
+    document.getElementById(`cell-${targetCell.pos}-${targetCell.team}`).innerText = currentVal || '-';
 
-      // スコア初期化
-      matchScores = {};
-      const tbody = document.getElementById('position-rows');
-      tbody.innerHTML = '';
+    calculateTotal();
+    closeSubModalOnly();
+  }
 
-      positions.forEach(pos => {
-        matchScores[pos] = { scoreA: '', scoreB: '' };
+  // クリアボタン処理
+  function clearTechnique() {
+    if (!targetCell) return;
+    matchScores[targetCell.pos][`score${targetCell.team}`] = '';
+    document.getElementById(`cell-${targetCell.pos}-${targetCell.team}`).innerText = '-';
+    calculateTotal();
+    closeSubModalOnly();
+  }
 
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="score-cell" id="cell-${pos}-A" onclick="openSubModal('${pos}', 'A')">-</td>
-          <td class="position-cell">${pos}</td>
-          <td class="score-cell" id="cell-${pos}-B" onclick="openSubModal('${pos}', 'B')">-</td>
+  function closeSubModalOnly() {
+    document.getElementById('sub-modal').style.display = 'none';
+    targetCell = null;
+  }
+
+  // 部位選択サブモーダルを開く関数（追加箇所）
+  function openSubModal(pos, team) {
+    targetCell = { pos, team };
+    const teamName = team === 'A' ? (currentMatch.teamA || 'チームA') : (currentMatch.teamB || 'チームB');
+    document.getElementById('sub-modal-title').innerText = `${pos} 【${teamName}】 取得部位`;
+    document.getElementById('sub-modal').style.display = 'flex';
+  }
+
+  // 文字列から「取得部位（本数）」を正確に抽出する補助関数
+  function countPoints(scoreStr) {
+    if (!scoreStr) return 0;
+    const matches = scoreStr.match(/[メコドツ]/g);
+    return matches ? matches.length : 0;
+  }
+
+  // 勝数・本数の自動計算と代表戦チェック
+  function calculateTotal() {
+    let winsA = 0, ptsA = 0;
+    let winsB = 0, ptsB = 0;
+    let filledCount = 0;
+
+    positions.forEach(pos => {
+      const sA = matchScores[pos].scoreA;
+      const sB = matchScores[pos].scoreB;
+
+      if (sA || sB) filledCount++;
+
+      const pA = countPoints(sA);
+      const pB = countPoints(sB);
+      ptsA += pA;
+      ptsB += pB;
+
+      if (pA > pB) winsA++;
+      if (pB > pA) winsB++;
+    });
+
+    document.getElementById('total-scoreA').innerText = `${winsA}勝 (${ptsA}本)`;
+    document.getElementById('total-scoreB').innerText = `${winsB}勝 (${ptsB}本)`;
+
+    const repSection = document.getElementById('rep-section');
+    const isTie = (winsA === winsB) && (ptsA === ptsB);
+
+    if (filledCount > 0 && isTie) {
+      repSection.style.display = 'block';
+    } else {
+      repSection.style.display = 'none';
+    }
+  }
+
+  function closeModal() {
+    document.getElementById('score-modal').style.display = 'none';
+  }
+
+  // 試合結果の保存処理（DB送信）
+  async function saveMatchResult() {
+    if (!currentMatch || !currentMatch.id) {
+      alert('エラー: 試合IDがありません。一度画面を再読み込みしてください。');
+      return;
+    }
+
+    let winsA = 0, ptsA = 0, winsB = 0, ptsB = 0;
+    positions.forEach(pos => {
+      const pA = countPoints(matchScores[pos].scoreA);
+      const pB = countPoints(matchScores[pos].scoreB);
+      ptsA += pA;
+      ptsB += pB;
+      if (pA > pB) winsA++;
+      if (pB > pA) winsB++;
+    });
+
+    let winnerTeam = null;
+    if (winsA > winsB) winnerTeam = currentMatch.teamA;
+    else if (winsB > winsA) winnerTeam = currentMatch.teamB;
+    else {
+      const repA = document.getElementById('repA').checked;
+      const repB = document.getElementById('repB').checked;
+      if (repA) winnerTeam = currentMatch.teamA;
+      if (repB) winnerTeam = currentMatch.teamB;
+      if (!repA && !repB) {
+        alert('勝数・本数が同点です。代表戦の勝者を選択してください。');
+        return;
+      }
+    }
+
+    try {
+      const response = await fetch('/api/match_update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: currentMatch.id,
+          category: currentMatch.category || 'low_elem',
+          stage: '決勝トーナメント',
+          // 💡 [修正] title が無ければ既存の match.title をそのまま確実に引き渡す
+          title: currentMatch.title,
+          teamA: currentMatch.teamA,
+          teamB: currentMatch.teamB,
+          scoreA: winsA,
+          scoreB: winsB,
+          status: 'finished',
+          details: { 
+            scores: matchScores, 
+            winnerTeam: winnerTeam,
+            // 💡 バックエンドでの安全な参照用にメタデータも保持
+            round: currentMatch.details?.round || parseInt((currentMatch.title || '').match(/(\d+)回戦/)?.[1] || 1, 10)
+          }
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        alert('試合結果を保存しました！');
+        closeModal();
+        await fetchTreeData(); // 画面を再取得・再描画
+      } else {
+        alert('保存失敗: ' + result.error);
+      }
+    } catch (err) {
+      console.error('保存エラー:', err);
+      alert('サーバー通信に失敗しました。');
+    }
+  }
+  // DBから得た配列でツリーをレンダリングする処理（完全動的対応・安全版）
+  function renderTreeWithData(matchesList) {
+    const container = document.getElementById('tournament-tree');
+    container.innerHTML = '';
+
+    if (!matchesList || matchesList.length === 0) return;
+
+    // 1. タイトル（"1回戦 第1試合", "2回戦 第1試合" 等）から安全かつ正確に回戦（数値）を取得
+    const roundMap = {};
+    matchesList.forEach(m => {
+      let roundNum = null;
+      const safeTitle = m.title || ''; // 💡 安全なガード処理を追加
+      
+      // タイトルから「◯回戦」を最優先で解析
+      const titleMatch = safeTitle.match(/(\d+)回戦/);
+      if (titleMatch) {
+        roundNum = parseInt(titleMatch[1], 10);
+      } else if (safeTitle.includes('決勝') && !safeTitle.includes('準')) { // 💡 safeTitle を使用
+        roundNum = 99;
+      } else if (safeTitle.includes('準決勝')) { // 💡 safeTitle を使用
+        roundNum = 98;
+      } else {
+        roundNum = m.round || (m.details && m.details.round) || 1;
+      }
+
+      if (!roundMap[roundNum]) roundMap[roundNum] = [];
+      roundMap[roundNum].push(m);
+    });
+    const sortedRounds = Object.keys(roundMap).sort((a, b) => Number(a) - Number(b));
+    const totalRounds = sortedRounds.length;
+
+    // 2. ラウンド名自動決定
+    const getRoundTitle = (rNum, idx, total) => {
+      if (rNum === 99) return '🏆 決勝';
+      if (rNum === 98) return '準決勝';
+      return `${rNum}回戦`;
+    };
+
+    // 3. 動的列生成
+    sortedRounds.forEach((rNum, idx) => {
+      const col = document.createElement('div');
+      col.className = 'round-column';
+
+      const titleText = getRoundTitle(Number(rNum), idx + 1, totalRounds);
+      col.innerHTML = `<div class="round-title">${titleText}</div>`;
+
+      // 試合番号順（第1試合、第2試合…）に並び替え
+      roundMap[rNum].sort((a, b) => (a.id || 0) - (b.id || 0));
+
+      roundMap[rNum].forEach(m => {
+        const card = document.createElement('div');
+        card.className = 'match-card';
+        card.onclick = () => openModal(m);
+        card.innerHTML = `
+          <div class="team-row"><span class="team-name">${m.teamA || '未定'}</span><span class="team-score">${m.scoreA || 0}</span></div>
+          <div class="team-row"><span class="team-name">${m.teamB || '未定'}</span><span class="team-score">${m.scoreB || 0}</span></div>
         `;
-        tbody.appendChild(tr);
+        col.appendChild(card);
       });
 
-      calculateTotal();
-      document.getElementById('score-modal').style.display = 'flex';
-    }
+      container.appendChild(col);
+    });
+  }  // Supabaseからデータ取得して起動する関数
+  async function fetchTreeData() {
+    try {
+      const response = await fetch('/api/matches');
+      const matches = await response.json();
 
-    // 部位選択サブモーダルを開く
-    function openSubModal(pos, team) {
-      targetCell = { pos, team };
-      const teamName = team === 'A' ? currentMatch.teamA : currentMatch.teamB;
-      document.getElementById('sub-modal-title').innerText = `${pos} 【${teamName}】 取得部位`;
-      document.getElementById('sub-modal').style.display = 'flex';
-    }
+      // 決勝トーナメントのデータのみ取得
+      const finalMatches = matches.filter(m => m.stage === '決勝トーナメント');
 
-    function closeSubModal() {
-      if (targetCell) {
-        matchScores[targetCell.pos][`score${targetCell.team}`] = '';
-        document.getElementById(`cell-${targetCell.pos}-${targetCell.team}`).innerText = '-';
-        calculateTotal();
-      }
-      document.getElementById('sub-modal').style.display = 'none';
-      targetCell = null;
-    }
-
-    // 技の選択処理（複数取得や先取に対応）
-    function selectTechnique(tech) {
-      if (!targetCell) return;
-
-      let currentVal = matchScores[targetCell.pos][`score${targetCell.team}`] || '';
-
-      if (tech === '引分') {
-        currentVal = '引分'; // 👈 「▲」から「引分」に修正
-      } else if (tech === '反則(▲)') {
-        currentVal = currentVal && currentVal !== '引分' ? currentVal + '▲' : '▲';
+      if (finalMatches.length > 0) {
+        renderTreeWithData(finalMatches);
       } else {
-        // メ○ や メ などを追記（2本まで）
-        if (currentVal === '▲' || currentVal === '-' || currentVal === '引分') currentVal = '';
-        currentVal += tech;
+        console.log('決勝トーナメントデータがまだありません。予選完了後にトーナメント生成を行ってください。');
       }
-
-      matchScores[targetCell.pos][`score${targetCell.team}`] = currentVal;
-      document.getElementById(`cell-${targetCell.pos}-${targetCell.team}`).innerText = currentVal || '-';
-
-      calculateTotal();
-      closeSubModalOnly();
+    } catch (err) {
+      console.error('データ取得エラー:', err);
     }
-    // クリアボタン処理
-    function clearTechnique() {
-      if (!targetCell) return;
-      matchScores[targetCell.pos][`score${targetCell.team}`] = '';
-      document.getElementById(`cell-${targetCell.pos}-${targetCell.team}`).innerText = '-';
-      calculateTotal();
-      closeSubModalOnly();
-    }
+  }
 
-    function closeSubModalOnly() {
-      document.getElementById('sub-modal').style.display = 'none';
-      targetCell = null;
-    }
-
-    // 【追加】文字列から「取得部位（本数）」を正確に抽出する補助関数
-    function countPoints(scoreStr) {
-      if (!scoreStr) return 0;
-      // 'メ', 'コ', 'ド', 'ツ' の出現回数のみをカウント（引分や▲は自動除外される）
-      const matches = scoreStr.match(/[メコドツ]/g);
-      return matches ? matches.length : 0;
-    }
-    // 勝数・本数の自動計算と代表戦チェック（修正版）
-    function calculateTotal() {
-      let winsA = 0, ptsA = 0;
-      let winsB = 0, ptsB = 0;
-      let filledCount = 0;
-
-      positions.forEach(pos => {
-        const sA = matchScores[pos].scoreA;
-        const sB = matchScores[pos].scoreB;
-
-        if (sA || sB) filledCount++;
-
-        // 正確な本数計算
-        const pA = countPoints(sA);
-        const pB = countPoints(sB);
-        ptsA += pA;
-        ptsB += pB;
-
-        // 勝者の判定（個人戦の本数が多い方が勝ち）
-        if (pA > pB) winsA++;
-        if (pB > pA) winsB++;
-      });
-
-      document.getElementById('total-scoreA').innerText = `${winsA}勝 (${ptsA}本)`;
-      document.getElementById('total-scoreB').innerText = `${winsB}勝 (${ptsB}本)`;
-
-      // 代表戦の自動表示判定（入力があり、かつ勝数・本数が完全同点の場合）
-      const repSection = document.getElementById('rep-section');
-      const isTie = (winsA === winsB) && (ptsA === ptsB);
-
-      if (filledCount > 0 && isTie) {
-        repSection.style.display = 'block';
-      } else {
-        repSection.style.display = 'none';
-      }
-    }
-    function closeModal() {
-      document.getElementById('score-modal').style.display = 'none';
-    }
-
-    function saveMatchResult() {
-      alert('入力完了！次のステップでSupabase/DB保存と自動勝ち上がりを接続します。');
-      closeModal();
-    }
-
-    // 初回描画
-    renderTree();
-  </script>
+  // 🚀 画面起動時の自動実行
+  fetchTreeData();
+</script>
 </body>
 </html>

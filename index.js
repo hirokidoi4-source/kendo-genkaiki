@@ -32,6 +32,20 @@ if (supabaseUrl && supabaseKey) {
 app.use(express.json());
 app.use('/', express.static(path.join(__dirname, 'public')));
 
+// 📄 チーム一覧取得 API（tournament_setup.html のモード判定・一覧表示用）
+app.get('/api/teams', async (req, res) => {
+    try {
+        const { data, error } = await supabase.from('teams').select('*');
+        if (error) throw error;
+        res.json(data || []);
+    } catch (err) {
+        console.error("チーム一覧取得エラー:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+
 // 試合結果取得
 app.get('/api/matches', async (req, res) => {
     const { data, error } = await supabase.from('matches').select('*').order('id', { ascending: false });
@@ -190,23 +204,79 @@ async function autoAdvanceTournament({ category, title, teamA, teamB, scoreA, sc
     }
 }
 
+// 📄 決勝トーナメント結果更新 API (final_input.html 用)
+app.post('/api/match_update', async (req, res) => {
+    try {
+        const { id, category, stage, title, teamA, teamB, scoreA, scoreB, status, details } = req.body;
 
+        if (!id) {
+            return res.status(400).json({ success: false, error: '試合ID(id)は必須です。' });
+        }
+
+        // 1. 該当の試合結果を更新（Supabaseのカラム名 scoreA / scoreB に合わせる）
+        const { data: updatedMatch, error: updateError } = await supabase
+            .from('matches')
+            .update({
+                scoreA: scoreA,
+                scoreB: scoreB,
+                status: status || 'finished',
+                details: details
+            })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (updateError) throw updateError;
+
+        // 2. 勝者が決定していれば自動勝ち上がり処理を実行
+        const winnerTeam = details?.winnerTeam;
+        if (winnerTeam) {
+            await autoAdvanceTournament(updatedMatch, winnerTeam);
+        }
+
+        res.json({ success: true, data: updatedMatch });
+    } catch (err) {
+        console.error("試合結果更新エラー:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 // ⚔️ トーナメント配置・部門別生成 API
 app.post('/api/tournament/generate', async (req, res) => {
     const { category, type } = req.body;
     try {
-        const { data: teams, error: tError } = await supabase
-            .from('teams')
-            .select('*')
-            .eq('category', category);
+        // 💡 リクエストでチーム一覧（req.body.teams）が直接送られてきている場合はそちらを優先
+        let inputTeams = (req.body.teams && Array.isArray(req.body.teams) && req.body.teams.length > 0)
+            ? req.body.teams
+            : [];
 
-        if (tError) return res.status(500).json({ error: tError.message });
-        if (!teams || teams.length < 2) return res.status(400).json({ error: 'チーム数が足りません' });
+        // DBから取得した生データ（組織情報含む）を保持する変数
+        let rawTeams = [];
+
+        if (inputTeams.length === 0) {
+            const { data: dbTeams, error: tError } = await supabase
+                .from('teams')
+                .select('*')
+                .eq('category', category);
+
+            if (tError) return res.status(500).json({ error: tError.message });
+            if (!dbTeams || dbTeams.length < 2) return res.status(400).json({ error: 'チーム数が足りません' });
+            
+            rawTeams = dbTeams;
+            inputTeams = dbTeams.map(t => t.team_name);
+        } else {
+            // 文字列配列で送られてきた場合はオブジェクト配列に変換してシャッフル用に備える
+            rawTeams = inputTeams.map(name => ({ team_name: name, organization: '未設定' }));
+        }
+
+        if (inputTeams.length < 2) {
+            return res.status(400).json({ error: 'トーナメント作成に必要なチーム数が足りません（2チーム以上必要です）' });
+        }
 
         let matchesToInsert = [];
 
         if (type === 'league') {
-            const optimizedTeams = optimizeTeamDistribution(teams);
+            // 💡 修正: 未定義の teams ではなく rawTeams を渡す
+            const optimizedTeams = optimizeTeamDistribution(rawTeams);
             const totalTeams = optimizedTeams.length;
 
             let count4 = totalTeams % 3;
@@ -277,11 +347,6 @@ app.post('/api/tournament/generate', async (req, res) => {
             if (count4 > 0) buildLeagueGroups(count4, 4);
 
         } else if (type === 'final' || type === 'tournament') {
-            // 💡 フロントエンドから送られてきた配置順（teams）を最優先で使用
-            const inputTeams = (req.body.teams && Array.isArray(req.body.teams) && req.body.teams.length > 0)
-                ? req.body.teams
-                : teams.map(t => t.team_name);
-
             const N = inputTeams.length;
 
             let T = 2;
@@ -345,7 +410,7 @@ app.post('/api/tournament/generate', async (req, res) => {
         }
 
         const { error: delError } = await delQuery;
-        const stageName = type === 'league' ? '予選リーグ' : '決勝トーナメント';
+        const stageName = (type === 'final' || type === 'tournament') ? '決勝トーナメント' : '予選リーグ';
 
         if (delError) {
             console.error(`[Generate Error] 既存の${stageName}データの削除に失敗:`, delError);
@@ -373,7 +438,6 @@ app.post('/api/tournament/generate', async (req, res) => {
         return res.status(500).json({ error: err.message });
     }
 });
-
 
 function optimizeTeamDistribution(teams) {
     if (!teams || teams.length === 0) return [];

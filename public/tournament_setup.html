@@ -421,14 +421,13 @@
                 });
                 const result = await res.json();
 
-                if (result.success) {
+                if (result && result.success === true) {
                     alert(`🏆 決勝トーナメント表を確定・生成しました！`);
-                    // 💡 保存完了後、新しい決勝入力画面（final_input.html）へ自動遷移
                     window.location.href = `/final_input.html?category=${category}`;
                 } else {
-                    alert('❌ 保存エラー: ' + (result.error || result.message));
-                }
-            } catch (err) {
+                    const errorMsg = result ? (result.error || result.message) : '応答データが不正です';
+                    alert('❌ 保存エラー: ' + errorMsg);
+                }            } catch (err) {
                 console.error(err);
                 alert('通信エラーが発生しました。');
             } finally {

@@ -182,7 +182,7 @@
                 toggleRemoveButtons();
             });
 
-            // --- 参加部門の必須チェック ＆ データ送信処理 ---
+          // --- 参加部門の必須チェック ＆ データ送信処理 ---
             const form = document.getElementById('entryForm');
             const categoryError = document.getElementById('categoryError');
 
@@ -204,6 +204,7 @@
                 const formData = new FormData(form);
                 const data = {};
                 formData.forEach((value, key) => {
+                    // 複数選択のチェックボックスなどの処理
                     if (data[key]) {
                         if (!Array.isArray(data[key])) {
                             data[key] = [data[key]];
@@ -214,12 +215,12 @@
                     }
                 });
 
-                // 審判員のデータをリストとして収集（name属性をHTML側と完全一致に修正！）
+                // 審判員のデータをリストとして収集
                 const referees = [];
                 container.querySelectorAll('.referee-row').forEach(row => {
-                    const name = row.querySelector('input[name="referee_name[]"]')?.value;
-                    const dan = row.querySelector('select[name="referee_dan[]"]')?.value;
-                    const title = row.querySelector('select[name="referee_title[]"]')?.value;
+                    const name = row.querySelector('input[name="refereeName[]"]')?.value;
+                    const dan = row.querySelector('select[name="refereeDan[]"]')?.value;
+                    const title = row.querySelector('select[name="refereeTitle[]"]')?.value;
                     if (name) {
                         referees.push({ name, dan, title });
                     }
@@ -227,8 +228,8 @@
                 data.referees = referees;
 
                 try {
-                    // 🚀 サーバーの保存用APIへ送信
-                    const response = await fetch('/api/match', { 
+                    // 🚀 Supabase連携しているサーバーのAPIにデータを送信！
+                    const response = await fetch('/api/match', { // ※実際の保存用APIエンドポイント名に合わせてください
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -237,7 +238,7 @@
                     });
 
                     if (response.ok) {
-                        // 送信が成功したら、完了画面に移動
+                        // 送信が成功したら、完了画面に移動する
                         window.location.href = '/admin_finish.html';
                     } else {
                         const errText = await response.text();
@@ -254,7 +255,6 @@
                     categoryError.classList.add('hidden');
                 });
             });
-        }); // 全体を囲むDOMContentLoadedの閉じカッコを追加！
     </script>
 </body>
 </html>
