@@ -121,7 +121,7 @@ const updateMatchHandler = async (req, res) => {
 app.put('/api/matches/:id', updateMatchHandler);
 app.post('/api/matches/:id', updateMatchHandler);
 
-// 🏆 決勝トーナメントの自動勝ち上がり専用関数（NaNバグ修正版）
+// 🏆 決勝トーナメントの自動勝ち上がり専用関数（決勝戦終了ガード追加版）
 async function autoAdvanceTournament({ category, title, teamA, teamB, scoreA, scoreB, parsedDetails }) {
     const { data: rawFinals } = await supabase.from('matches').select('*').eq('stage', '決勝トーナメント');
     const allFinals = (rawFinals || []).filter(m => m.category === category || !category);
@@ -136,8 +136,7 @@ async function autoAdvanceTournament({ category, title, teamA, teamB, scoreA, sc
     };
 
     const currentTitle = title || '';
-    
-    // 💡 全角数字・半角数字・表記揺れに対応する抽出ロジック
+
     const normalizeNum = (str) => {
         if (!str) return 0;
         const half = str.replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xfee0));
@@ -155,19 +154,20 @@ async function autoAdvanceTournament({ category, title, teamA, teamB, scoreA, sc
     const roundNum = normalizeNum(roundMatch[1]);
     const matchNum = normalizeNum(matchMatch[1]);
 
-    // 💡 全体の最大回戦数（決勝戦の回戦数）を取得し、決勝戦なら勝ち上がり処理を行わない
+    // 💡 決勝戦（全試合中の最大回戦）判定：決勝戦の場合は勝ち上がり生成を行わない
     const maxRound = Math.max(...allFinals.map(m => {
         const rm = m.title ? m.title.match(/([0-9０-９]+)回戦/) : null;
         return rm ? normalizeNum(rm[1]) : 0;
     }));
 
     if (roundNum >= maxRound && maxRound > 0) {
-        console.log(`[Auto Advance Skip] ${roundNum}回戦は決勝戦のため、勝ち上がり枠の生成をスキップします。`);
+        console.log(`[Auto Advance Skip] ${roundNum}回戦は決勝戦のため、勝ち上がり枠の自動生成をスキップします。`);
         return;
     }
 
     const pairMatchNum = (matchNum % 2 === 1) ? matchNum + 1 : matchNum - 1;
     const nextMatchNum = Math.ceil(matchNum / 2);
+
     const currentMatch = allFinals.find(m => m.title && m.title.includes(`${roundNum}回戦 第${matchNum}試合`));
     const pairMatch = allFinals.find(m => m.title && m.title.includes(`${roundNum}回戦 第${pairMatchNum}試合`));
 
@@ -210,7 +210,6 @@ async function autoAdvanceTournament({ category, title, teamA, teamB, scoreA, sc
         }
     }
 }
-
 // 📄 決勝トーナメント結果更新 API (final_input.html 用)
 app.post('/api/match_update', async (req, res) => {
     try {
@@ -349,7 +348,14 @@ app.post('/api/tournament/generate', async (req, res) => {
             if (count4 > 0) buildLeagueGroups(count4, 4);
 
         } else if (type === 'final' || type === 'tournament') {
-            const N = inputTeams.length;
+            // 💡 既存ロジックを崩さず、元のチーム一覧のコピーをランダムにシャッフル
+            const shuffledTeams = [...inputTeams];
+            for (let i = shuffledTeams.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffledTeams[i], shuffledTeams[j]] = [shuffledTeams[j], shuffledTeams[i]];
+            }
+
+            const N = shuffledTeams.length;
 
             let T = 2;
             while (T < N) { T *= 2; }
@@ -371,7 +377,7 @@ app.post('/api/tournament/generate', async (req, res) => {
                 if (byeIndices.has(i)) {
                     currentSlots[i] = '（シード）';
                 } else {
-                    currentSlots[i] = inputTeams[teamIdx++];
+                    currentSlots[i] = shuffledTeams[teamIdx++]; // 💡 シャッフルされたチーム順で配置
                 }
             }
 
