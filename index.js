@@ -44,8 +44,6 @@ app.get('/api/teams', async (req, res) => {
     }
 });
 
-
-
 // 試合結果取得
 app.get('/api/matches', async (req, res) => {
     const { data, error } = await supabase.from('matches').select('*').order('id', { ascending: false });
@@ -139,15 +137,13 @@ async function autoAdvanceTournament({ category, title, teamA, teamB, scoreA, sc
 
     const currentTitle = title || '';
     
-    // 💡 修正: 全角数字・半角数字・表記揺れ（スペース有無など）に対応する抽出ロジック
+    // 💡 全角数字・半角数字・表記揺れに対応する抽出ロジック
     const normalizeNum = (str) => {
         if (!str) return 0;
-        // 全角数字を半角数字に変換
         const half = str.replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xfee0));
         return parseInt(half, 10) || 0;
     };
 
-    // "1回戦 第1試合", "1回戦第1試合" などの表記に対応
     const roundMatch = currentTitle.match(/([0-9０-９]+)回戦/);
     const matchMatch = currentTitle.match(/第([0-9０-９]+)試合/);
 
@@ -158,9 +154,20 @@ async function autoAdvanceTournament({ category, title, teamA, teamB, scoreA, sc
 
     const roundNum = normalizeNum(roundMatch[1]);
     const matchNum = normalizeNum(matchMatch[1]);
+
+    // 💡 全体の最大回戦数（決勝戦の回戦数）を取得し、決勝戦なら勝ち上がり処理を行わない
+    const maxRound = Math.max(...allFinals.map(m => {
+        const rm = m.title ? m.title.match(/([0-9０-９]+)回戦/) : null;
+        return rm ? normalizeNum(rm[1]) : 0;
+    }));
+
+    if (roundNum >= maxRound && maxRound > 0) {
+        console.log(`[Auto Advance Skip] ${roundNum}回戦は決勝戦のため、勝ち上がり枠の生成をスキップします。`);
+        return;
+    }
+
     const pairMatchNum = (matchNum % 2 === 1) ? matchNum + 1 : matchNum - 1;
     const nextMatchNum = Math.ceil(matchNum / 2);
-
     const currentMatch = allFinals.find(m => m.title && m.title.includes(`${roundNum}回戦 第${matchNum}試合`));
     const pairMatch = allFinals.find(m => m.title && m.title.includes(`${roundNum}回戦 第${pairMatchNum}試合`));
 
@@ -213,7 +220,6 @@ app.post('/api/match_update', async (req, res) => {
             return res.status(400).json({ success: false, error: '試合ID(id)は必須です。' });
         }
 
-        // 1. 該当の試合結果を更新（Supabaseのカラム名 scoreA / scoreB に合わせる）
         const { data: updatedMatch, error: updateError } = await supabase
             .from('matches')
             .update({
@@ -228,7 +234,6 @@ app.post('/api/match_update', async (req, res) => {
 
         if (updateError) throw updateError;
 
-        // 2. 勝者が決定していれば自動勝ち上がり処理を実行
         const winnerTeam = details?.winnerTeam;
         if (winnerTeam) {
             await autoAdvanceTournament(updatedMatch, winnerTeam);
@@ -240,16 +245,15 @@ app.post('/api/match_update', async (req, res) => {
         res.status(500).json({ success: false, error: err.message });
     }
 });
+
 // ⚔️ トーナメント配置・部門別生成 API
 app.post('/api/tournament/generate', async (req, res) => {
     const { category, type } = req.body;
     try {
-        // 💡 リクエストでチーム一覧（req.body.teams）が直接送られてきている場合はそちらを優先
         let inputTeams = (req.body.teams && Array.isArray(req.body.teams) && req.body.teams.length > 0)
             ? req.body.teams
             : [];
 
-        // DBから取得した生データ（組織情報含む）を保持する変数
         let rawTeams = [];
 
         if (inputTeams.length === 0) {
@@ -264,7 +268,6 @@ app.post('/api/tournament/generate', async (req, res) => {
             rawTeams = dbTeams;
             inputTeams = dbTeams.map(t => t.team_name);
         } else {
-            // 文字列配列で送られてきた場合はオブジェクト配列に変換してシャッフル用に備える
             rawTeams = inputTeams.map(name => ({ team_name: name, organization: '未設定' }));
         }
 
@@ -275,7 +278,6 @@ app.post('/api/tournament/generate', async (req, res) => {
         let matchesToInsert = [];
 
         if (type === 'league') {
-            // 💡 修正: 未定義の teams ではなく rawTeams を渡す
             const optimizedTeams = optimizeTeamDistribution(rawTeams);
             const totalTeams = optimizedTeams.length;
 
@@ -352,52 +354,85 @@ app.post('/api/tournament/generate', async (req, res) => {
             let T = 2;
             while (T < N) { T *= 2; }
 
-            // 画面で配置された順番のまま slots にセット
-            const slots = new Array(T).fill(null);
+            // 💡 標準シード配置順を求める関数（上下均等分散）
+            const getSeedOrder = (size) => {
+                if (size === 2) return [0, 1];
+                const half = getSeedOrder(size / 2);
+                return half.flatMap(x => [x, size - 1 - x]);
+            };
+
+            const seedPositions = getSeedOrder(T);
+            const byeIndices = new Set(seedPositions.slice(N));
+
+            // 初期スロットの割り当て
+            let currentSlots = new Array(T).fill(null);
+            let teamIdx = 0;
             for (let i = 0; i < T; i++) {
-                if (i < N) {
-                    slots[i] = { team_name: inputTeams[i] };
+                if (byeIndices.has(i)) {
+                    currentSlots[i] = '（シード）';
                 } else {
-                    slots[i] = { team_name: '（シード）' };
+                    currentSlots[i] = inputTeams[teamIdx++];
                 }
             }
 
-            let matchNum = 1;
-            for (let i = 0; i < T; i += 2) {
-                const teamA = slots[i];
-                const teamB = slots[i + 1];
+            const totalRounds = Math.log2(T);
+            let activeSlots = currentSlots; // 各ラウンドの参加チーム一覧
 
-                const isByeA = teamA.team_name === '（シード）';
-                const isByeB = teamB.team_name === '（シード）';
+            // 🏆 1回戦から決勝戦まで順番に生成していく完全単一ループ処理
+            for (let r = 1; r <= totalRounds; r++) {
+                const nextSlots = [];
+                let matchNum = 1;
 
-                if (isByeA && isByeB) continue;
+                for (let i = 0; i < activeSlots.length; i += 2) {
+                    const teamA = activeSlots[i] || '未定';
+                    const teamB = activeSlots[i + 1] || '未定';
 
-                let status = 'scheduled';
-                let scoreA = 0;
-                let scoreB = 0;
+                    const isByeA = teamA === '（シード）';
+                    const isByeB = teamB === '（シード）';
 
-                if (isByeA || isByeB) {
-                    status = 'finished';
-                    scoreA = isByeB ? 1 : 0;
-                    scoreB = isByeA ? 1 : 0;
+                    // 両方シード枠の場合は試合自体をスキップ
+                    if (isByeA && isByeB) {
+                        nextSlots.push('（シード）');
+                        continue;
+                    }
+
+                    let status = 'scheduled';
+                    let scoreA = 0;
+                    let scoreB = 0;
+                    let winnerName = null;
+
+                    // 片方がシード（不戦勝）の場合
+                    if (isByeA || isByeB) {
+                        status = 'finished';
+                        scoreA = isByeB ? 1 : 0;
+                        scoreB = isByeA ? 1 : 0;
+                        winnerName = isByeB ? teamA : teamB;
+                        nextSlots.push(winnerName); // 勝者を次のラウンドのスロットへ
+                    } else {
+                        nextSlots.push('未定'); // 試合が行われる場合は次ラウンドは「未定」
+                    }
+
+                    matchesToInsert.push({
+                        category: category,
+                        stage: '決勝トーナメント',
+                        title: `${r}回戦 第${matchNum}試合`,
+                        teamA: teamA,
+                        teamB: teamB,
+                        scoreA: scoreA,
+                        scoreB: scoreB,
+                        status: status,
+                        details: {
+                            round: r,
+                            match_index: matchNum,
+                            total_slots: activeSlots.length,
+                            winnerTeam: winnerName
+                        }
+                    });
+                    matchNum++;
                 }
 
-                matchesToInsert.push({
-                    category,
-                    stage: '決勝トーナメント',
-                    title: `1回戦 第${matchNum}試合`,
-                    teamA: teamA.team_name,
-                    teamB: teamB.team_name,
-                    scoreA,
-                    scoreB,
-                    status,
-                    details: { 
-                        round: 1, 
-                        match_index: matchNum,
-                        total_slots: T 
-                    }
-                });
-                matchNum++;
+                // 次のラウンドへ進む
+                activeSlots = nextSlots;
             }
         }
 
