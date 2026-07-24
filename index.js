@@ -191,143 +191,6 @@ async function autoAdvanceTournament({ category, title, teamA, teamB, scoreA, sc
 }
 
 
-// 【決勝勝ち上がり自動生成付き】試合結果を「更新」または「新規保存」するAPI
-app.post('/api/match_update', async (req, res) => {
-    try {
-        const { id, category, stage, title, teamA, teamB, scoreA, scoreB, status, details } = req.body;
-        let parsedDetails = typeof details === 'string' ? JSON.parse(details) : details;
-
-        if (id) {
-            const { data: existingMatch } = await supabase.from('matches').select('details').eq('id', id).single();
-            if (existingMatch && existingMatch.details) {
-                const oldDetails = typeof existingMatch.details === 'string' ? JSON.parse(existingMatch.details) : existingMatch.details;
-                if (oldDetails && typeof oldDetails === 'object' && !Array.isArray(oldDetails)) {
-                    parsedDetails = {
-                        ...oldDetails,
-                        order_list: Array.isArray(parsedDetails) ? parsedDetails : (parsedDetails.order_list || [])
-                    };
-                }
-            }
-        }
-
-        const rowData = {
-            category,
-            stage,
-            title,
-            teamA,
-            teamB,
-            scoreA: parseInt(scoreA, 10) || 0,
-            scoreB: parseInt(scoreB, 10) || 0,
-            status: status || 'finished',
-            details: parsedDetails
-        };
-
-        let result;
-        if (id) {
-            const { data, error } = await supabase.from('matches').update(rowData).eq('id', id).select();
-            if (error) throw error;
-            result = data;
-        } else {
-            const { data, error } = await supabase.from('matches').insert([rowData]).select();
-            if (error) throw error;
-            result = data;
-        }
-
-        // 🏆 決勝トーナメントの勝ち上がりロジック実行（外部関数呼び出し）
-        if (status === 'finished' && stage === '決勝トーナメント') {
-            await autoAdvanceTournament({ category, title, teamA, teamB, scoreA, scoreB, parsedDetails });
-        }
-
-        res.json({ success: true, data: result });
-    } catch (err) {
-        console.error("試合データ更新エラー:", err);
-        res.status(500).json({ error: err.message });
-    }
-});
-app.get('/api/results', async (req, res) => {
-    const { data, error } = await supabase.from('tournament_results').select('*').order('id', { ascending: false }).limit(1);
-    res.json(data && data.length > 0 ? data[0] : { status: 'ongoing' });
-});
-
-app.post('/api/results', async (req, res) => {
-    const { data, error } = await supabase.from('tournament_results').insert([req.body]);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ success: true });
-});
-
-app.get('/api/teams', async (req, res) => {
-    const { data, error } = await supabase.from('teams').select('*').order('id', { ascending: true });
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data || []);
-});
-
-app.post('/api/teams/import', async (req, res) => {
-    const incomingTeams = req.body; 
-    
-    if (!Array.isArray(incomingTeams) || incomingTeams.length === 0) {
-        return res.status(400).json({ success: false, error: '有効なチームデータがありません。' });
-    }
-
-    try {
-        console.log(`[Import] インポート処理を開始します。受信件数: ${incomingTeams.length}件`);
-
-        const { error: deleteError } = await supabase
-            .from('teams')
-            .delete()
-            .neq('id', 0);
-
-        if (deleteError) {
-            console.error('[Import Error] 既存データの削除に失敗しました:', deleteError);
-            return res.status(500).json({ 
-                success: false, 
-                error: `既存データのクリーンアップに失敗しました。SupabaseのRLS設定（DELETE権限）を確認してください。詳細: ${deleteError.message}` 
-            });
-        }
-
-        const categoryMap = {
-            '小学生低学年': 'low_elem',
-            '小学生団体': 'elem',
-            '中学生団体': 'mid',
-            '中学女子団体': 'mid_girls',
-            'low_elem': 'low_elem',
-            'elem': 'elem',
-            'mid': 'mid',
-            'mid_girls': 'mid_girls'
-        };
-
-        const formattedTeams = incomingTeams.map((t, index) => {
-            const rawCategory = (t.category || '').trim();
-            const mappedCategory = categoryMap[rawCategory];
-
-            return {
-                category: mappedCategory || rawCategory, 
-                team_name: (t.team_name || '').trim(),
-                organization: (t.organization || '').trim()
-            };
-        });
-
-        const { data, error: insertError } = await supabase
-            .from('teams')
-            .insert(formattedTeams)
-            .select();
-
-        if (insertError) {
-            console.error('[Import Error] データのインサートに失敗しました:', insertError);
-            return res.status(500).json({ success: false, error: `新規データの登録に失敗しました: ${insertError.message}` });
-        }
-
-        return res.json({ 
-            success: true, 
-            count: formattedTeams.length,
-            message: 'データを完全に初期化し、新しくインポートしました。' 
-        });
-
-    } catch (err) {
-        console.error('[Import Critical Error] システムエラーが発生しました:', err);
-        return res.status(500).json({ success: false, error: 'サーバー内で予期せぬエラーが発生しました。' });
-    }
-});
-
 // ⚔️ トーナメント配置・部門別生成 API
 app.post('/api/tournament/generate', async (req, res) => {
     const { category, type } = req.body;
@@ -414,40 +277,23 @@ app.post('/api/tournament/generate', async (req, res) => {
             if (count4 > 0) buildLeagueGroups(count4, 4);
 
         } else if (type === 'final' || type === 'tournament') {
-            const orgTeams = [...teams];
-            const N = orgTeams.length;
+            // 💡 フロントエンドから送られてきた配置順（teams）を最優先で使用
+            const inputTeams = (req.body.teams && Array.isArray(req.body.teams) && req.body.teams.length > 0)
+                ? req.body.teams
+                : teams.map(t => t.team_name);
+
+            const N = inputTeams.length;
 
             let T = 2;
             while (T < N) { T *= 2; }
 
-            const numByes = T - N;
-
-            let seedOrder = [0, 1];
-            while (seedOrder.length < T) {
-                const nextOrder = [];
-                const currentLength = seedOrder.length;
-                for (let i = 0; i < currentLength; i++) {
-                    nextOrder.push(seedOrder[i]);
-                    nextOrder.push(currentLength * 2 - 1 - seedOrder[i]);
-                }
-                seedOrder = nextOrder;
-            }
-
-            const sortedTeams = optimizeTeamDistribution(orgTeams);
+            // 画面で配置された順番のまま slots にセット
             const slots = new Array(T).fill(null);
-
-            const byeSlots = seedOrder
-                .map((seed, index) => ({ seed, index }))
-                .sort((a, b) => b.seed - a.seed)
-                .slice(0, numByes)
-                .map(item => item.index);
-
-            let teamIdx = 0;
             for (let i = 0; i < T; i++) {
-                if (byeSlots.includes(i)) {
-                    slots[i] = { team_name: '（シード）', organization: '' };
+                if (i < N) {
+                    slots[i] = { team_name: inputTeams[i] };
                 } else {
-                    slots[i] = sortedTeams[teamIdx++];
+                    slots[i] = { team_name: '（シード）' };
                 }
             }
 
@@ -490,9 +336,12 @@ app.post('/api/tournament/generate', async (req, res) => {
             }
         }
 
+        // 💾 既存データの削除処理（クリーンアップ）
         let delQuery = supabase.from('matches').delete().eq('category', category);
         if (type === 'final' || type === 'tournament') {
             delQuery = delQuery.eq('stage', '決勝トーナメント');
+        } else {
+            delQuery = delQuery.eq('stage', '予選リーグ');
         }
 
         const { error: delError } = await delQuery;
@@ -503,6 +352,7 @@ app.post('/api/tournament/generate', async (req, res) => {
             return res.status(500).json({ error: `既存データのクリーンアップ失敗: ${delError.message}` });
         }
 
+        // 💾 生成したデータの保存（Supabase Insert）
         const { data: insertedData, error: iError } = await supabase
             .from('matches')
             .insert(matchesToInsert)
@@ -511,22 +361,6 @@ app.post('/api/tournament/generate', async (req, res) => {
         if (iError) {
             console.error(`[Generate Error] ${stageName}データの保存に失敗:`, iError);
             return res.status(500).json({ error: `試合データの保存に失敗しました: ${iError.message}` });
-        }
-
-        // 💡 追加入力: 生成時にすでに終了(finished)扱いになっているシード戦を自動勝ち上がり処理する
-        if (type === 'final' || type === 'tournament') {
-            const finishedByes = (insertedData || []).filter(m => m.status === 'finished');
-            for (const match of finishedByes) {
-                await autoAdvanceTournament({
-                    category: match.category,
-                    title: match.title,
-                    teamA: match.teamA,
-                    teamB: match.teamB,
-                    scoreA: match.scoreA,
-                    scoreB: match.scoreB,
-                    parsedDetails: match.details
-                });
-            }
         }
 
         return res.json({ 
@@ -539,6 +373,7 @@ app.post('/api/tournament/generate', async (req, res) => {
         return res.status(500).json({ error: err.message });
     }
 });
+
 
 function optimizeTeamDistribution(teams) {
     if (!teams || teams.length === 0) return [];
