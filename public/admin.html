@@ -67,11 +67,11 @@
                 <div class="mt-6 pt-6 border-t border-gray-100 bg-gray-50/50 p-4 rounded-lg">
                     <h3 class="font-bold text-sm text-green-900 flex items-center gap-1 mb-2">⚡ 同門回避 自動生成</h3>
                     <div class="flex gap-2 mb-2">
-                      <select id="selectCategory" class="w-full bg-white border border-gray-300 rounded px-2 py-1.5 text-sm font-medium text-gray-700 focus:outline-none focus:border-green-500">
+                      <select id="selectCategory" class="w-full p-2 border border-gray-300 rounded mb-3">
                           <option value="low_elem">小学生低学年</option>
-                          <option value="elem">小学生団体</option>
-                          <option value="mid">中学生団体</option>
-                          <option value="mid_girls">中学女子団体</option>
+                          <option value="high_elem">小学生高学年</option>
+                          <option value="jhs_men">中学生男子</option>
+                          <option value="jhs_women">中学生女子</option>
                       </select>
                     </div>
                     <div class="space-y-2">
@@ -118,6 +118,17 @@
     </div>
 
 <script>
+    // 💡 カテゴリ名の自動変換マッピング
+    const CATEGORY_MAP = {
+        '小学生低学年': 'low_elem',
+        '小学生団体': 'high_elem',
+        '小学生高学年': 'high_elem',
+        '中学生団体': 'jhs_men',
+        '中学生男子': 'jhs_men',
+        '中学女子団体': 'jhs_women',
+        '中学生女子': 'jhs_women'
+    };
+
     // CSVを読み込んでJSONでサーバーに投げる処理
     async function handleCSVImport() {
         const fileInput = document.getElementById('csvFile');
@@ -135,8 +146,9 @@
                 if (!lines[i].trim()) continue;
                 const cols = lines[i].split(',');
                 if (cols.length >= 3) {
+                    const rawCategory = cols[0].trim();
                     teams.push({
-                        category: cols[0].trim(),
+                        category: CATEGORY_MAP[rawCategory] || rawCategory, // 💡 ここで統一IDへ自動変換
                         team_name: cols[1].trim(),
                         organization: cols[2].trim()
                     });
@@ -160,26 +172,17 @@
             }
         };
         reader.readAsText(file, 'UTF-8');
-    }
+    }    
 
-    // 組み合わせ生成リクエスト
+    // ⚔️ 予選リーグ / 決勝トーナメント生成処理
     async function generateMatches(type) {
-        const categorySelect = document.getElementById('selectCategory');
-        if (!categorySelect) return alert('❌ 部門選択ボックスが見つかりません');
+        const select = document.getElementById('selectCategory');
+        if (!select) return;
 
-        const category = categorySelect.value;
-        const categoryText = categorySelect.options[categorySelect.selectedIndex].text;
-        const typeStr = type === 'league' ? '予選リーグ' : '決勝トーナメント';
-
-        const confirmMsg = `【組み合わせ自動生成の確認】\n\n` +
-                           `部門: ${categoryText}\n` +
-                           `種別: ${typeStr}\n\n` +
-                           `⚠️ 注意 ⚠️\n` +
-                           `現在保存されている「${categoryText}」の「${typeStr}」データは削除され、新しい組み合わせで上書きされます。\n` +
-                           `※他の部門（クラス）の試合データには一切影響しません。\n\n` +
-                           `この内容で再生成を実行しますか？`;
-
-        if (!confirm(confirmMsg)) return;
+        // 💡 選択されたカテゴリのID（high_elem等）と画面表示名（小学生高学年等）を取得
+        const category = select.value;
+        const categoryName = select.options[select.selectedIndex].text;
+        const typeName = (type === 'league') ? '予選リーグ' : '決勝トーナメント';
 
         try {
             const res = await fetch('/api/tournament/generate', {
@@ -188,50 +191,26 @@
                 body: JSON.stringify({ category, type })
             });
             const result = await res.json();
-            if (result.success) {
-                alert('🎯 ' + result.message);
+
+            if (res.ok && result.success) {
+                // 💡 部門名と処理名（予選リーグ/決勝トーナメント）を動的にポップアップ表示
+                alert(`✅ ${categoryName} の${typeName}生成が完了しました！`);
             } else {
-                alert('❌ 生成エラー: ' + result.error);
+                alert(`❌ 生成失敗: ${result.error || '処理に失敗しました'}`);
             }
         } catch (err) {
+            console.error('試合生成エラー:', err);
             alert('❌ 通信エラーが発生しました。');
         }
     }
 
-    // 予選なしで全登録チームからトーナメントを直接生成する処理
+    // 🏆 全チームでトーナメント直接生成（予選なし）
     async function generateDirectTournament() {
-        const categorySelect = document.getElementById('selectCategory');
-        if (!categorySelect) return alert('❌ 部門選択ボックスが見つかりません');
-
-        const category = categorySelect.value;
-        const categoryText = categorySelect.options[categorySelect.selectedIndex].text;
-
-        const confirmMsg = `【トーナメント直接生成の確認】\n\n` +
-                           `部門: ${categoryText}\n\n` +
-                           `⚠️ 注意 ⚠️\n` +
-                           `予選を行わず、登録されている全チームで直接トーナメントを自動生成します。\n` +
-                           `現在保存されている「${categoryText}」の対戦データは上書きされます。\n\n` +
-                           `この内容で生成を実行しますか？`;
-
-        if (!confirm(confirmMsg)) return;
-
-        try {
-            const res = await fetch('/api/tournament/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ category, type: 'tournament' })
-            });
-            const result = await res.json();
-            if (result.success) {
-                alert('🎯 トーナメントを直接生成しました！');
-                window.location.href = `/final_input.html?category=${category}`;
-            } else {
-                alert('❌ 生成エラー: ' + (result.error || '生成に失敗しました'));
-            }
-        } catch (err) {
-            alert('❌ 通信エラーが発生しました。');
-        }
+        await generateMatches('final');
     }
-    </script>
+
+
+
+</script>
 </body>
 </html>

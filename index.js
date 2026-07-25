@@ -32,6 +32,36 @@ if (supabaseUrl && supabaseKey) {
 app.use(express.json());
 app.use('/', express.static(path.join(__dirname, 'public')));
 
+// 📥 エントリーチームのインポート処理 (CSVインポート用)
+app.post('/api/teams/import', async (req, res) => {
+    try {
+        const teams = req.body;
+
+        if (!Array.isArray(teams) || teams.length === 0) {
+            return res.status(400).json({ success: false, error: 'インポートするデータがありません。' });
+        }
+
+        // Supabase へのデータ一括挿入
+        const { data, error } = await supabase
+            .from('teams')
+            .insert(teams)
+            .select();
+
+        if (error) {
+            console.error('❌ Supabase 挿入エラー:', error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+
+        console.log(`✅ ${teams.length} チームのインポートに成功しました`);
+        return res.json({ success: true, count: teams.length });
+
+    } catch (err) {
+        console.error('❌ サーバー内部エラー:', err);
+        return res.status(500).json({ success: false, error: 'サーバー処理中にエラーが発生しました。' });
+    }
+});
+
+
 // 📄 チーム一覧取得 API（tournament_setup.html のモード判定・一覧表示用）
 app.get('/api/teams', async (req, res) => {
     try {
