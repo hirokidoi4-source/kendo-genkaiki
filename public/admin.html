@@ -67,6 +67,7 @@
                 <div class="mt-6 pt-6 border-t border-gray-100 bg-gray-50/50 p-4 rounded-lg">
                     <h3 class="font-bold text-sm text-green-900 flex items-center gap-1 mb-2">⚡ 同門回避 自動生成</h3>
                     <div class="flex gap-2 mb-2">
+<<<<<<< HEAD
                       <select id="selectCategory" class="w-full p-2 border border-gray-300 rounded mb-3">
                           <option value="low_elem">小学生低学年</option>
                           <option value="high_elem">小学生高学年</option>
@@ -74,6 +75,14 @@
                           <option value="jhs_women">中学生女子</option>
                       </select>
                     </div>
+=======
+                      <select id="categorySelect" class="border border-gray-300 rounded p-2 text-sm focus:ring-indigo-500">
+                          <option value="low_elem">① 小学生低学年</option>
+                          <option value="high_elem">② 小学生団体</option>
+                          <option value="jhs_men">③ 中学生団体</option>
+                          <option value="jhs_women">④ 中学女子団体</option>
+                      </select>                    </div>
+>>>>>>> 3f60aae (fix: 予選リーグの表示編集（全部門できっちり表示されるように設定))
                     <div class="space-y-2">
                         <div class="grid grid-cols-2 gap-2">
                             <button onclick="generateMatches('league')" class="bg-green-600 text-white text-xs font-bold py-2 rounded hover:bg-green-700 transition shadow-sm">
@@ -178,6 +187,8 @@
     async function generateMatches(type) {
         const select = document.getElementById('selectCategory');
         if (!select) return;
+        const categorySelect = document.getElementById('categorySelect');
+        if (!categorySelect) return alert('❌ 部門選択ボックスが見つかりません');
 
         // 💡 選択されたカテゴリのID（high_elem等）と画面表示名（小学生高学年等）を取得
         const category = select.value;

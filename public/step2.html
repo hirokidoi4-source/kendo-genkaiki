@@ -23,12 +23,12 @@
                 <span class="text-indigo-600 font-bold">※自動計算により、3チームリーグは【1位のみ】、4チームリーグは【2位まで】決勝へ進出します。</span><br>
                 <span class="text-red-500 font-bold">※同じリーグ内に同一の「母体団体」が存在する場合、赤く警告されます。</span>
             </p>
-            <select id="categorySelect" onchange="loadTeamsAndRender()" class="border border-gray-300 rounded p-2 text-sm focus:ring-indigo-500">
-                <option value="low_elem">① 小学生低学年</option>
-                <option value="elem">② 小学生団体</option>
-                <option value="mid">③ 中学生団体</option>
-                <option value="mid_girls">④ 中学女子団体</option>
-            </select>
+            <select id="categorySelect" class="border border-gray-300 rounded p-2 text-sm focus:ring-indigo-500">
+              <option value="low_elem">① 小学生低学年</option>
+              <option value="high_elem">② 小学生団体</option>
+              <option value="jhs_men">③ 中学生団体</option>
+              <option value="jhs_women">④ 中学女子団体</option>
+          </select>
         </div>
 
         <!-- 🌟 動的に生成されたリーグボックスが配置されるエリア -->
@@ -310,7 +310,16 @@
                     btn.classList.remove('opacity-50', 'cursor-not-allowed');
                 }
             });
+            
+            // step2.html の <script> 内、末尾付近
 
+            // 💡 追加: カテゴリ選択が変更された時に自動で再描画する処理を追加
+            document.getElementById('categorySelect').addEventListener('change', loadTeamsAndRender);
+
+            // 初期ロード実行
+            loadTeamsAndRender();
+        });
+    </script>
             // 初期ロード実行
             loadTeamsAndRender();
         });

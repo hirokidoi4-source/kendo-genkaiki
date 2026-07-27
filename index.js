@@ -76,8 +76,24 @@ app.get('/api/teams', async (req, res) => {
 
 // 試合結果取得
 app.get('/api/matches', async (req, res) => {
-    const { data, error } = await supabase.from('matches').select('*').order('id', { ascending: false });
-    res.json(data || []);
+  try {
+    const { category } = req.query;
+    
+    let query = supabase.from('matches').select('*');
+    
+    // category が指定されている場合はフィルタリングを実施
+    if (category) {
+      query = query.eq('category', category);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching matches:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 試合結果保存（新規作成用・互換性維持）
