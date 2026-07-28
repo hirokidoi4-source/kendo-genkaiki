@@ -385,6 +385,50 @@
     }
   }
 
+  // 💡 1回戦のシード（不戦勝）を自動判定して2回戦のスロットへ進出させる関数
+function processByeAdvances(matches) {
+  // 回戦ごとに並び替え
+  const r1Matches = matches.filter(m => (m.title || '').includes('1回戦') || m.round === 1);
+  const r2Matches = matches.filter(m => (m.title || '').includes('2回戦') || m.round === 2);
+
+  // 試合ID順にソート
+  r1Matches.sort((a, b) => (a.id || 0) - (b.id || 0));
+  r2Matches.sort((a, b) => (a.id || 0) - (b.id || 0));
+
+  r1Matches.forEach((m, idx) => {
+    const isTeamABye = !m.teamA || m.teamA === '(シード)' || m.teamA.includes('シード');
+    const isTeamBBye = !m.teamB || m.teamB === '(シード)' || m.teamB.includes('シード');
+
+    let winner = null;
+    if (isTeamABye && !isTeamBBye) {
+      m.scoreA = 0; m.scoreB = 1; winner = m.teamB;
+    } else if (!isTeamABye && isTeamBBye) {
+      m.scoreA = 1; m.scoreB = 0; winner = m.teamA;
+    } else if (m.scoreA > m.scoreB) {
+      winner = m.teamA;
+    } else if (m.scoreB > m.scoreA) {
+      winner = m.teamB;
+    }
+
+    // 勝者が決まっている場合、2回戦の対応するスロット（Math.floor(idx / 2)）へセット
+    if (winner && r2Matches.length > 0) {
+      const parentMatchIndex = Math.floor(idx / 2);
+      const isTopSlot = (idx % 2 === 0);
+      const parentMatch = r2Matches[parentMatchIndex];
+
+      if (parentMatch) {
+        if (isTopSlot) {
+          if (!parentMatch.teamA || parentMatch.teamA === '未定') parentMatch.teamA = winner;
+        } else {
+          if (!parentMatch.teamB || parentMatch.teamB === '未定') parentMatch.teamB = winner;
+        }
+      }
+    }
+  });
+
+  return matches;
+}
+
   // モーダルを開く（過去の入力データ復元対応）
   function openModal(match) {
     currentMatch = match;
@@ -509,7 +553,7 @@
     document.getElementById('score-modal').style.display = 'none';
   }
 
-  // 試合結果の保存処理（DB送信）
+  // 💡 試合結果の保存処理（勝者の次回戦連動付き）
   async function saveMatchResult() {
     if (!currentMatch || !currentMatch.id) {
       alert('エラー: 試合IDがありません。一度画面を再読み込みしてください。');
@@ -520,8 +564,7 @@
     positions.forEach(pos => {
       const pA = countPoints(matchScores[pos].scoreA);
       const pB = countPoints(matchScores[pos].scoreB);
-      ptsA += pA;
-      ptsB += pB;
+      ptsA += pA; ptsB += pB;
       if (pA > pB) winsA++;
       if (pB > pA) winsB++;
     });
@@ -541,6 +584,7 @@
     }
 
     try {
+      // 1. 現在の試合結果を保存
       const response = await fetch('/api/match_update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -548,7 +592,6 @@
           id: currentMatch.id,
           category: currentMatch.category || 'low_elem',
           stage: '決勝トーナメント',
-          // 💡 [修正] title が無ければ既存の match.title をそのまま確実に引き渡す
           title: currentMatch.title,
           teamA: currentMatch.teamA,
           teamB: currentMatch.teamB,
@@ -558,7 +601,6 @@
           details: { 
             scores: matchScores, 
             winnerTeam: winnerTeam,
-            // 💡 バックエンドでの安全な参照用にメタデータも保持
             round: currentMatch.details?.round || parseInt((currentMatch.title || '').match(/(\d+)回戦/)?.[1] || 1, 10)
           }
         })
@@ -649,27 +691,25 @@ function switchCategory(selectedCategory) {
   fetchTreeData();
 }
 
-// Supabaseから選択中カテゴリのデータのみ取得して起動する関数
+// 💡 Supabaseから選択中カテゴリのデータのみ取得して起動する関数（シード自動繰り上げ適用版）
 async function fetchTreeData() {
   try {
-    // URLパラメータ(?category=xxx)またはセレクトボックスから選択中カテゴリを取得
     const urlParams = new URLSearchParams(window.location.search);
     const select = document.getElementById('categorySelect');
     const currentCategory = urlParams.get('category') || (select ? select.value : 'low_elem');
 
-    // セレクトボックスの選択状態を同期
     if (select) {
       select.value = currentCategory;
     }
 
-    // 選択されたカテゴリの試合データのみAPIから取得
     const response = await fetch(`/api/matches?category=${encodeURIComponent(currentCategory)}`);
     const matches = await response.json();
 
-    // 決勝トーナメントのデータのみ抽出
-    const finalMatches = matches.filter(m => m.stage === '決勝トーナメント');
+    let finalMatches = matches.filter(m => m.stage === '決勝トーナメント');
 
     if (finalMatches.length > 0) {
+      // 💡 シードの自動繰り上げ処理を通してから描画
+      finalMatches = processByeAdvances(finalMatches);
       renderTreeWithData(finalMatches);
     } else {
       const container = document.getElementById('tournament-tree');
