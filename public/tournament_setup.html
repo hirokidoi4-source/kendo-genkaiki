@@ -97,12 +97,28 @@
                     const res = await fetch('/api/teams');
                     allTeamsList = await res.json();
                 }
+                
+                // 試合データを取得（重複を解消）
                 const resMatches = await fetch('/api/matches');
                 allMatchesList = await resMatches.json();
 
-                const filteredTeams = allTeamsList.filter(t => t.category === category);
-                const leagueMatches = allMatchesList.filter(m => m.category === category && m.stage === '予選リーグ');
+                // 🔍【デバッグ用ログ】DB内のカテゴリ状態を出力
+                console.log("🔍 [DEBUG] 現在選択中の画面カテゴリ:", category);
+                console.log('【DEBUG】DB内にある全試合データのカテゴリ名:', [...new Set(allMatchesList.map(m => m.category))]);
 
+                // 表記ブレ（elem / elementary / 小学生高学年 / 略称など）を広く網羅するマップ
+                const CATEGORY_MAP = {
+                  'low_elem': ['low_elem', 'elementary_low', '小学生低学年'],
+                  'elem': ['elem', 'high_elem', 'elementary', '小学生団体', 'elementary_high', 'elem_high'],
+                  'mid': ['mid', 'jhs_men', '中学生団体'],
+                  'mid_girls': ['mid_girls', 'jhs_women', '中学女子団体']
+                };
+
+                const targetCategories = CATEGORY_MAP[category] || [category];
+
+                // マッピングに合致するデータを取り出し
+                const filteredTeams = allTeamsList.filter(t => targetCategories.includes(t.category));
+                const leagueMatches = allMatchesList.filter(m => targetCategories.includes(m.category) && m.stage === '予選リーグ');
                 if (leagueMatches.length === 0) {
                     modeBadge.innerText = '予選なし：ストレートTモード 🎌';
                     modeBadge.className = 'text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded ml-2 font-bold';

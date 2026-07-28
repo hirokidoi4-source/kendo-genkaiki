@@ -262,7 +262,15 @@
 
   <div class="header">
     <h1>🏆 決勝トーナメント</h1>
-    <span id="category-label">小学生低学年</span>
+    <div style="margin-top: 10px;">
+      <label for="categorySelect" style="font-weight: bold; font-size: 14px; color: var(--text-main);">対象部門：</label>
+      <select id="categorySelect" onchange="switchCategory(this.value)" style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-color); font-weight: bold; font-size: 15px; background: #fff; cursor: pointer;">
+        <option value="low_elem">① 小学生低学年</option>
+        <option value="elem">② 小学生団体</option>
+        <option value="mid">③ 中学生団体</option>
+        <option value="mid_girls">④ 中学女子団体</option>
+      </select>
+    </div>
   </div>
 
   <!-- 山形トーナメント表示領域 -->
@@ -632,26 +640,52 @@
       container.appendChild(col);
     });
   }  // Supabaseからデータ取得して起動する関数
-  async function fetchTreeData() {
-    try {
-      const response = await fetch('/api/matches');
-      const matches = await response.json();
+  // 💡 430行目付近の fetchTreeData および 画面起動処理を以下に差し替え
 
-      // 決勝トーナメントのデータのみ取得
-      const finalMatches = matches.filter(m => m.stage === '決勝トーナメント');
-
-      if (finalMatches.length > 0) {
-        renderTreeWithData(finalMatches);
-      } else {
-        console.log('決勝トーナメントデータがまだありません。予選完了後にトーナメント生成を行ってください。');
-      }
-    } catch (err) {
-      console.error('データ取得エラー:', err);
-    }
-  }
-
-  // 🚀 画面起動時の自動実行
+// 🔄 部門切替関数
+function switchCategory(selectedCategory) {
+  const newUrl = `${window.location.pathname}?category=${selectedCategory}`;
+  window.history.pushState({ path: newUrl }, '', newUrl);
   fetchTreeData();
-</script>
+}
+
+// Supabaseから選択中カテゴリのデータのみ取得して起動する関数
+async function fetchTreeData() {
+  try {
+    // URLパラメータ(?category=xxx)またはセレクトボックスから選択中カテゴリを取得
+    const urlParams = new URLSearchParams(window.location.search);
+    const select = document.getElementById('categorySelect');
+    const currentCategory = urlParams.get('category') || (select ? select.value : 'low_elem');
+
+    // セレクトボックスの選択状態を同期
+    if (select) {
+      select.value = currentCategory;
+    }
+
+    // 選択されたカテゴリの試合データのみAPIから取得
+    const response = await fetch(`/api/matches?category=${encodeURIComponent(currentCategory)}`);
+    const matches = await response.json();
+
+    // 決勝トーナメントのデータのみ抽出
+    const finalMatches = matches.filter(m => m.stage === '決勝トーナメント');
+
+    if (finalMatches.length > 0) {
+      renderTreeWithData(finalMatches);
+    } else {
+      const container = document.getElementById('tournament-tree');
+      container.innerHTML = `
+        <div style="text-align: center; width: 100%; padding: 40px; color: #64748b; font-weight: bold;">
+          該当部門の決勝トーナメントデータがまだありません。<br>
+          「組み合わせ管理 (tournament_setup.html)」画面でトーナメント表を確定・保存してください。
+        </div>
+      `;
+    }
+  } catch (err) {
+    console.error('データ取得エラー:', err);
+  }
+}
+
+// 🚀 画面起動時の自動実行
+fetchTreeData();</script>
 </body>
 </html>
