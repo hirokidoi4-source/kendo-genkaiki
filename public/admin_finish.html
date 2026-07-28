@@ -16,11 +16,12 @@
            <!-- 🏷️ 部門選択ドロップダウン -->
             <div class="bg-indigo-50 p-4 rounded-md border border-indigo-200">
                 <label class="block text-sm font-bold text-indigo-900 mb-2">表示・編集する部門</label>
+                <!-- 💡 value をDBの正規キーに修正 -->
                 <select id="sel_category" onchange="loadCategoryData()" class="w-full border-indigo-300 rounded-md shadow-sm p-3 border focus:ring-indigo-500 font-bold text-gray-800 bg-white">
                     <option value="low_elem">小学生低学年の部</option>
-                    <option value="high_elem">小学生高学年の部</option>
-                    <option value="jhs_women">中学生女子の部</option>
-                    <option value="jhs_men">中学生男子の部</option>
+                    <option value="elem">小学生高学年の部</option>
+                    <option value="mid_girls">中学生女子の部</option>
+                    <option value="mid">中学生男子の部</option>
                 </select>
             </div> 
             <div class="bg-gray-50 p-4 rounded-md border border-gray-200">
@@ -83,7 +84,7 @@
     </div>
 
     <script>
-        // 🏆 データベースから試合結果を取得し、勝者（1位〜3位）を自動抽出する関数
+        // 🏆 データベースから試合結果を取得し、勝者（1位〜3位）を自動抽出する超堅牢関数
         async function loadCategoryData() {
             const categorySelect = document.getElementById('sel_category');
             const selectedCategory = categorySelect.value;
@@ -93,63 +94,92 @@
             document.getElementById('inp_title').value = `第21回 宗像少年剣道大会（${categoryText}）`;
 
             try {
-                // DBから全試合を取得
-                const res = await fetch('/api/matches');
-                const allMatches = await res.json();
+                // DBから試合データを取得
+                const res = await fetch(`/api/matches?category=${encodeURIComponent(selectedCategory)}`);
+                let matches = await res.json();
 
-                // 選択中部門の「決勝トーナメント」のみ抽出
-                const categoryMatches = allMatches.filter(m =>
-                    (m.category === selectedCategory) && m.stage === '決勝トーナメント'
-                );
+                // キーの表記揺れ（high_elem ⇔ elem 等）を吸収するフォールバック処理
+                if (!Array.isArray(matches) || matches.length === 0) {
+                    const allRes = await fetch('/api/matches');
+                    const allMatches = await allRes.json();
+                    const keyMap = {
+                        'elem': ['elem', 'high_elem'],
+                        'mid_girls': ['mid_girls', 'jhs_women'],
+                        'mid': ['mid', 'jhs_men'],
+                        'low_elem': ['low_elem']
+                    };
+                    const validKeys = keyMap[selectedCategory] || [selectedCategory];
+                    matches = allMatches.filter(m => validKeys.includes(m.category));
+                }
+
+                // 決勝トーナメントの試合のみ抽出
+                const categoryMatches = matches.filter(m => m.stage === '決勝トーナメント');
+
+                console.log(`[デバッグ] 選択部門: ${selectedCategory}, 取得試合数: ${categoryMatches.length}`, categoryMatches);
 
                 if (!categoryMatches || categoryMatches.length === 0) {
                     clearInputs();
                     return;
                 }
 
-                // 回戦数を数値化する関数
-                const normalizeNum = (str) => {
-                    if (!str) return 0;
-                    const half = str.replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xfee0));
-                    return parseInt(half, 10) || 0;
+                // 各試合の回戦数を柔軟に算出する関数
+                const getRoundNumber = (m) => {
+                    if (m.details?.round) return parseInt(m.details.round, 10);
+                    if (m.round) return parseInt(m.round, 10);
+                    if (m.title) {
+                        const match = m.title.match(/([0-9０-９]+)回戦/);
+                        if (match) {
+                            const num = match[1].replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xfee0));
+                            return parseInt(num, 10) || 0;
+                        }
+                    }
+                    return 0;
                 };
 
-                // 最大回戦（決勝戦）を特定
+                // 勝者を安全に判定する関数（statusに関わらずスコアがあれば即判定）
+                const getWinner = (m) => {
+                    if (!m) return null;
+                    const det = typeof m.details === 'string' ? JSON.parse(m.details) : m.details;
+                    if (det?.winnerTeam) return det.winnerTeam;
+                    
+                    const sA = Number(m.scoreA) || 0;
+                    const sB = Number(m.scoreB) || 0;
+                    if (sA > sB) return m.teamA;
+                    if (sB > sA) return m.teamB;
+                    return null;
+                };
+
+                // 最大ラウンド（決勝戦）を特定
                 let maxRound = 0;
                 categoryMatches.forEach(m => {
-                    const rm = m.title ? m.title.match(/([0-9０-９]+)回戦/) : null;
-                    if (rm) {
-                        const r = normalizeNum(rm[1]);
-                        if (r > maxRound) maxRound = r;
-                    }
+                    const r = getRoundNumber(m);
+                    if (r > maxRound) maxRound = r;
                 });
+
+                console.log(`[デバッグ] 判定された最大ラウンド: ${maxRound}`);
 
                 let winner = '', runnerUp = '', third1 = '', third2 = '';
 
-                // 🥇 優勝 & 🥈 準優勝（決勝戦: maxRound）
-                const finalMatch = categoryMatches.find(m => m.title && m.title.includes(`${maxRound}回戦`));
-                if (finalMatch && finalMatch.status === 'finished') {
-                    const det = typeof finalMatch.details === 'string' ? JSON.parse(finalMatch.details) : finalMatch.details;
-                    const winTeam = det?.winnerTeam || (finalMatch.scoreA > finalMatch.scoreB ? finalMatch.teamA : (finalMatch.scoreB > finalMatch.scoreA ? finalMatch.teamB : null));
+                // 🥇 優勝 & 🥈 準優勝（決勝戦）
+                const finalMatch = categoryMatches.find(m => getRoundNumber(m) === maxRound || (m.title && m.title.includes('決勝')));
+                if (finalMatch) {
+                    const winTeam = getWinner(finalMatch);
                     if (winTeam) {
                         winner = winTeam;
                         runnerUp = (winTeam === finalMatch.teamA) ? finalMatch.teamB : finalMatch.teamA;
                     }
                 }
 
-                // 🥉 第3位（2チーム）（準決勝: maxRound - 1）
+                // 🥉 第3位（2チーム）（準決勝）
                 if (maxRound > 1) {
-                    const semiMatches = categoryMatches.filter(m => m.title && m.title.includes(`${maxRound - 1}回戦`));
+                    const semiMatches = categoryMatches.filter(m => getRoundNumber(m) === maxRound - 1 || (m.title && m.title.includes('準決勝')));
                     const losers = [];
                     semiMatches.forEach(m => {
-                        if (m.status === 'finished') {
-                            const det = typeof m.details === 'string' ? JSON.parse(m.details) : m.details;
-                            const winTeam = det?.winnerTeam || (m.scoreA > m.scoreB ? m.teamA : (m.scoreB > m.scoreA ? m.teamB : null));
-                            if (winTeam) {
-                                const loser = (winTeam === m.teamA) ? m.teamB : m.teamA;
-                                if (loser && loser !== '未定' && loser !== '（シード）') {
-                                    losers.push(loser);
-                                }
+                        const winTeam = getWinner(m);
+                        if (winTeam) {
+                            const loser = (winTeam === m.teamA) ? m.teamB : m.teamA;
+                            if (loser && loser !== '未定' && !loser.includes('シード')) {
+                                losers.push(loser);
                             }
                         }
                     });
@@ -157,7 +187,7 @@
                     third2 = losers[1] || '';
                 }
 
-                // フォームへセット
+                // フォームへセット（フォームはreadonlyにしていないため自由に変更・手打ち修正可能です）
                 document.getElementById('inp_winner').value = winner;
                 document.getElementById('inp_runner_up').value = runnerUp;
                 document.getElementById('inp_third_1').value = third1;

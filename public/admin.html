@@ -142,31 +142,31 @@
         'jhs_women': 'mid_girls'
     };
 
-    // 予選リーグ生成実行関数（またはボタンクリックイベント内）
-    async function handleGenerateLeagues() {
-        const rawCategory = document.getElementById('categorySelect').value;
-        // 表記ブレを統一されたキー（low_elem / elem / mid / mid_girls）に変換
-        const category = ADMIN_CATEGORY_MAP[rawCategory] || rawCategory;
+  // 予選リーグ生成実行関数（またはボタンクリックイベント内）
+  async function handleGenerateLeagues() {
+      const rawCategory = document.getElementById('categorySelect').value;
+      // 表記ブレを統一されたキー（low_elem / elem / mid / mid_girls）に変換
+      const category = ADMIN_CATEGORY_MAP[rawCategory] || rawCategory;
 
-        try {
-            const response = await fetch('/api/leagues/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ category: category })
-            });
+      try {
+          const response = await fetch('/api/leagues/generate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ category: category })
+          });
 
-            const result = await response.json();
+          const result = await response.json();
 
-            if (response.ok && result.success !== false) {
-                alert(`【成功】${rawCategory} の予選リーグをSupabaseに生成・保存しました！`);
-            } else {
-                alert(`【エラー】保存に失敗しました: ${result.error || result.message || '不明なエラー'}`);
-            }
-        } catch (error) {
-            console.error('Supabase通信エラー:', error);
-            alert('【通信エラー】サーバー/Supabaseへのデータ送信に失敗しました。');
-        }
-    }    
+          if (response.ok && result.success !== false) {
+              alert(`【成功】${rawCategory} の予選リーグをSupabaseに生成・保存しました！`);
+          } else {
+              alert(`【エラー】保存に失敗しました: ${result.error || result.message || '不明なエラー'}`);
+          }
+      } catch (error) {
+          console.error('Supabase通信エラー:', error);
+          alert('【通信エラー】サーバー/Supabaseへのデータ送信に失敗しました。');
+      }
+  }    
 
     // ⚔️ 予選リーグ / 決勝トーナメント生成処理
     async function generateMatches(type) {
