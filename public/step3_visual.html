@@ -207,17 +207,16 @@
                 localSaved = JSON.parse(localStorage.getItem(`kendo_matches_${currentCategory}`)) || JSON.parse(localStorage.getItem('kendo_matches')) || [];
             } catch(e){}
 
-            // API (Supabase) から対戦一覧を取得し、現在のカテゴリでフィルタリング
+            
             try {
                 const res = await fetch('/api/matches');
                 if (res.ok) {
                     const allMatches = await res.json();
                     
-                    // カテゴリの和名・英名キー両方に対応し、かつ「予選リーグ」のデータのみに絞り込み
+                    // カテゴリの和名・英名キー両方に対応して絞り込み
                     const catKey = categoryKeyMap[currentCategory] || currentCategory;
                     rawMatches = allMatches.filter(m => 
-                        (m.category === currentCategory || m.category === catKey) &&
-                        (m.stage === '予選リーグ' || !m.stage)
+                        m.category === currentCategory || m.category === catKey
                     );
                 }
             } catch (e) {
@@ -254,7 +253,7 @@
                   }
                   cleanMatches.push(parsed);
               });
-            }else {
+            }          else {
                 let leagueBlocks = getLeagueBlocksFromStorage(currentCategory);
                 leagueBlocks.forEach(block => {
                     const leagueName = block.league;

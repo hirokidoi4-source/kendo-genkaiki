@@ -560,32 +560,50 @@ app.post('/api/tournament/generate', async (req, res) => {
     }
 });
 
+
+// 🎲 配列をランダムにシャッフルするヘルパー関数（Fisher-Yates）
+function shuffleArray(array) {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+// ⚔️ 同門回避 1次元チーム配列生成ロジック（完全ランダム対応）
 function optimizeTeamDistribution(teams) {
     if (!teams || teams.length === 0) return [];
-    
-    const shuffledTeams = [...teams];
-    for (let i = shuffledTeams.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffledTeams[i], shuffledTeams[j]] = [shuffledTeams[j], shuffledTeams[i]];
-    }
 
-    const groups = {};
+    // 1. 全チームを最初にランダムシャッフル
+    const shuffledTeams = shuffleArray(teams);
+
+    // 2. 団体（道場・所属）ごとにチームをグループ化
+    const orgGroups = {};
     shuffledTeams.forEach(team => {
-        const org = team.organization || '無所属';
-        if (!groups[org]) groups[org] = [];
-        groups[org].push(team);
+        const org = team.organization || team.team_name;
+        if (!orgGroups[org]) orgGroups[org] = [];
+        orgGroups[org].push(team);
     });
 
-    const sortedOrgs = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
+    // 3. チーム数が多い順にソート（同人数の団体同士はランダムに並び替え）
+    const sortedOrgNames = Object.keys(orgGroups).sort((a, b) => {
+        const diff = orgGroups[b].length - orgGroups[a].length;
+        if (diff !== 0) return diff;
+        return Math.random() - 0.5;
+    });
 
+    // 4. 各団体のチーム配列もシャッフル
+    const orgQueues = sortedOrgNames.map(org => shuffleArray(orgGroups[org]));
+
+    // 5. 交互（ラウンドロビン）に1次元配列へ展開して同門の集中を回避
     const result = [];
     let added = true;
-
     while (added) {
         added = false;
-        for (const org of sortedOrgs) {
-            if (groups[org].length > 0) {
-                result.push(groups[org].shift());
+        for (const queue of orgQueues) {
+            if (queue.length > 0) {
+                result.push(queue.shift());
                 added = true;
             }
         }
@@ -593,6 +611,7 @@ function optimizeTeamDistribution(teams) {
 
     return result;
 }
+
 
 // 💾 手動組み替え後の予選リーグ保存 API
 app.post('/api/tournament/save_league', async (req, res) => {
