@@ -203,6 +203,85 @@
     async function generateDirectTournament() {
         await generateMatches('final');
     }
+    // 📥 CSVファイルを読み込んでサーバー(/api/teams/import)へ送信する処理
+async function handleCSVImport() {
+    // 1. ファイル選択要素を取得
+    const fileInput = document.querySelector('input[type="file"]');
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        alert('インポートするCSVファイルを選択してください。');
+        return;
+    }
+
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+
+    reader.onload = async (e) => {
+        try {
+            const text = e.target.result;
+            // 改行で分割（空行を除外）
+            const lines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
+            if (lines.length < 2) {
+                alert('CSVファイルにデータが含まれていません。');
+                return;
+            }
+
+            // 1行目のヘッダー（列名）を取得
+            const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+            
+            // 2行目以降のデータ行をJSON配列にパース
+            const teams = [];
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+                if (values.length < headers.length) continue;
+
+                const rowObj = {};
+                headers.forEach((header, index) => {
+                    rowObj[header] = values[index];
+                });
+
+                // チーム名が存在する行のみ抽出（日本語列名にもフォールバック対応）
+                const categoryVal = rowObj.category || rowObj['部門'] || rowObj['部門名'] || '';
+                const teamNameVal = rowObj.team_name || rowObj['チーム名'] || '';
+                const orgVal = rowObj.organization || rowObj['所属'] || rowObj['団体名'] || teamNameVal;
+
+                if (teamNameVal) {
+                    teams.push({
+                        category: categoryVal,
+                        team_name: teamNameVal,
+                        organization: orgVal
+                    });
+                }
+            }
+
+            if (teams.length === 0) {
+                alert('インポート可能なチームデータが見つかりませんでした。CSVの形式をご確認ください。');
+                return;
+            }
+
+            // 2. バックエンド(/api/teams/import)へ一括送信
+            const response = await fetch('/api/teams/import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(teams)
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                alert(`✅ ${result.count} チームのデータ取り込みに成功しました！`);
+                location.reload(); // 最新データ反映のためにページを再読み込み
+            } else {
+                alert('❌ インポートエラー: ' + (result.error || '保存に失敗しました'));
+            }
+
+        } catch (err) {
+            console.error('CSVパースエラー:', err);
+            alert('CSVファイルの読み込み中にエラーが発生しました。');
+        }
+    };
+
+    // UTF-8でファイルを読み込み
+    reader.readAsText(file, 'UTF-8');
+}
 </script>
 </body>
 </html>

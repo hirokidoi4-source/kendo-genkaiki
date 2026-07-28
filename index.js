@@ -32,14 +32,52 @@ if (supabaseUrl && supabaseKey) {
 app.use(express.json());
 app.use('/', express.static(path.join(__dirname, 'public')));
 
+// 💡 カテゴリ名の表記ゆれを正規キーに統一する独立ヘルパー関数
+const CATEGORY_MAP = {
+    '小学生低学年の部': 'low_elem',
+    '小学生低学年': 'low_elem',
+    'elementary_low': 'low_elem',
+    'low_elem': 'low_elem',
+    
+    '小学生高学年の部': 'elem',
+    '小学生高学年': 'elem',
+    '小学生団体': 'elem',
+    'elementary_high': 'elem',
+    'elementary': 'elem',
+    'elem': 'elem',
+    
+    '中学生女子の部': 'mid_girls',
+    '中学生女子': 'mid_girls',
+    '中学女子団体': 'mid_girls',
+    'jhs_women': 'mid_girls',
+    'mid_girls': 'mid_girls',
+    
+    '中学生男子の部': 'mid',
+    '中学生男子': 'mid',
+    '中学生団体': 'mid',
+    'jhs_men': 'mid',
+    'mid': 'mid'
+};
+
+function normalizeCategory(categoryStr) {
+    if (!categoryStr) return categoryStr;
+    return CATEGORY_MAP[categoryStr.trim()] || categoryStr;
+}
+
 // 📥 エントリーチームのインポート処理 (CSVインポート用)
 app.post('/api/teams/import', async (req, res) => {
     try {
-        const teams = req.body;
+        const rawTeams = req.body;
 
-        if (!Array.isArray(teams) || teams.length === 0) {
+        if (!Array.isArray(rawTeams) || rawTeams.length === 0) {
             return res.status(400).json({ success: false, error: 'インポートするデータがありません。' });
         }
+
+        // 💡 Supabaseへ保存する前に、カテゴリ名を正規キー（low_elem等）に一括変換
+        const teams = rawTeams.map(t => ({
+            ...t,
+            category: normalizeCategory(t.category)
+        }));
 
         // Supabase へのデータ一括挿入
         const { data, error } = await supabase
@@ -60,6 +98,8 @@ app.post('/api/teams/import', async (req, res) => {
         return res.status(500).json({ success: false, error: 'サーバー処理中にエラーが発生しました。' });
     }
 });
+
+
 
 
 // 📄 チーム一覧取得 API（tournament_setup.html のモード判定・一覧表示用）
