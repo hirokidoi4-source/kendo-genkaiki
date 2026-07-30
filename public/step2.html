@@ -6,6 +6,7 @@
     <title>組み合わせ管理 - 少年剣道大会</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="/common.js"></script>
 </head>
 <body class="bg-gray-100 text-gray-800 font-sans p-6">
 
@@ -23,12 +24,12 @@
                 <span class="text-indigo-600 font-bold">※自動計算により、3チームリーグは【1位のみ】、4チームリーグは【2位まで】決勝へ進出します。</span><br>
                 <span class="text-red-500 font-bold">※同じリーグ内に同一の「母体団体」が存在する場合、赤く警告されます。</span>
             </p>
-            <select id="categorySelect" class="border border-gray-300 rounded p-2 text-sm focus:ring-indigo-500">
-              <option value="low_elem">① 小学生低学年</option>
-              <option value="high_elem">② 小学生団体</option>
-              <option value="jhs_men">③ 中学生団体</option>
-              <option value="jhs_women">④ 中学女子団体</option>
-          </select>
+            <select id="categorySelect" class="border rounded p-2" onchange="loadTeamsAndRender()">
+                <option value="low_elem">小学生低学年</option>
+                <option value="elem">小学生団体</option>
+                <option value="mid">中学生団体</option>
+                <option value="mid_girls">中学生女子</option>
+            </select>
         </div>
 
         <!-- 🌟 動的に生成されたリーグボックスが配置されるエリア -->
@@ -45,9 +46,19 @@
         document.addEventListener('DOMContentLoaded', () => {
             let sortableInstances = [];
 
-            // === 1. バックエンドの試合データからリーグ情報を抽出して画面を生成 ===
+            // === 1. バックエンドの試合データからリーグ情報を抽出して画面を生成（正規化対応版） ===
             window.loadTeamsAndRender = async () => {
-                const category = document.getElementById('categorySelect').value;
+                const categorySelect = document.getElementById('categorySelect');
+                if (!categorySelect) return;
+
+                // 💡 common.js の正規化関数を安全に呼び出すヘルパー
+                const norm = (val) => typeof normalizeCategoryKey === 'function' ? normalizeCategoryKey(val) : val;
+
+                // 1. 選択されたカテゴリーを正規化（Single Source of Truth）
+                const rawCategory = categorySelect.value || '';
+                const targetCategory = norm(rawCategory);
+                console.log(`[Step2] 選択カテゴリー(正規化済): ${targetCategory}`);
+
                 const wrapper = document.getElementById('dynamicLeagueWrapper');
                 wrapper.innerHTML = '';
                 document.getElementById('leagueTrash').innerHTML = '';
@@ -60,13 +71,19 @@
                     // 1. まず全試合データを取得し、該当部門の予選リーグ試合を抽出
                     const matchRes = await fetch('/api/matches');
                     const allMatches = await matchRes.json();
-                    const currentMatches = allMatches.filter(m => m.category === category && m.stage === '予選リーグ');
+                    
+                    // 💡 DB側のカテゴリーも毎回 normalize して比較することで表記ゆれを完全吸収！
+                    const currentMatches = allMatches.filter(m => {
+                        return norm(m.category) === targetCategory && m.stage === '予選リーグ';
+                    });
 
                     // 2. 全チームのマスターデータを取得（母体情報を引くため）
                     const teamRes = await fetch('/api/teams');
                     const allTeams = await teamRes.json();
                     const teamMasterMap = {};
-                    allTeams.filter(t => t.category === category).forEach(t => {
+                    
+                    // 💡 チームデータ側も同様に normalize して比較
+                    allTeams.filter(t => norm(t.category) === targetCategory).forEach(t => {
                         teamMasterMap[t.team_name] = t.organization;
                     });
 
@@ -87,8 +104,17 @@
                         if (!leagueGroupedMap[leagueName]) {
                             leagueGroupedMap[leagueName] = new Set();
                         }
-                        if (m.teamA && m.teamA !== '（不戦勝枠）') leagueGroupedMap[leagueName].add(m.teamA);
-                        if (m.teamB && m.teamB !== '（不戦勝枠）') leagueGroupedMap[leagueName].add(m.teamB);
+
+                        // 💡 修正: 前後の空白・改行を .trim() で完全に除去してから重複チェック！
+                        const cleanTeamA = typeof m.teamA === 'string' ? m.teamA.trim() : '';
+                        const cleanTeamB = typeof m.teamB === 'string' ? m.teamB.trim() : '';
+
+                        if (cleanTeamA && cleanTeamA !== '（不戦勝枠）') {
+                            leagueGroupedMap[leagueName].add(cleanTeamA);
+                        }
+                        if (cleanTeamB && cleanTeamB !== '（不戦勝枠）') {
+                            leagueGroupedMap[leagueName].add(cleanTeamB);
+                        }
                     });
 
                     // リーグ名をアルファベット順にソートして画面にHTML枠を動的作成！🎨
@@ -314,7 +340,7 @@
             // step2.html の <script> 内、末尾付近
 
             // 💡 追加: カテゴリ選択が変更された時に自動で再描画する処理を追加
-            document.getElementById('categorySelect').addEventListener('change', loadTeamsAndRender);
+            // document.getElementById('categorySelect').addEventListener('change', loadTeamsAndRender);
 
             // 初期ロード実行
             loadTeamsAndRender();
