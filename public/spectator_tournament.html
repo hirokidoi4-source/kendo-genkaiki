@@ -42,13 +42,13 @@
             <button onclick="switchCategory('mid')" id="btn-mid" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition bg-slate-100 text-slate-600">③ 中学生団体</button>
             <button onclick="switchCategory('mid_girls')" id="btn-mid_girls" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition bg-slate-100 text-slate-600">④ 中学生女子団体</button>
         </div>
-
-        <!-- トーナメントカラム表示エリア（横スクロール対応） -->
         <div id="tournamentContainer" class="tourney-scroll pb-6">
             <div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">
                 トーナメントデータを読み込み中...
             </div>
         </div>
+
+        <!-- トーナメントカラム表示エリア（横スクロール対応） -->
     </main>
 
     <!-- 対戦詳細モーダル -->
@@ -256,22 +256,22 @@
             `;
         }
 
-        // 👈 ★差し替え: チーム名(teamA/B)と勝数(scoreA/B)を正確に表示するカード関数
+
+        // 👈 ★差し替え: 試合ID(id)で安全に呼び出すカード関数
         function renderCard(m) {
-            // 変数名の違い(teamA vs redTeam等)を完全吸収
             const teamA = m.teamA || m.redTeam || m.team1 || '未定';
             const teamB = m.teamB || m.whiteTeam || m.team2 || '未定';
             const scoreA = (m.scoreA !== undefined && m.scoreA !== null) ? m.scoreA : 0;
             const scoreB = (m.scoreB !== undefined && m.scoreB !== null) ? m.scoreB : 0;
 
-            // 勝者側の強調判定
             const isFinished = m.status === 'finished' || (scoreA > 0 || scoreB > 0);
             const winA = isFinished && (scoreA > scoreB);
             const winB = isFinished && (scoreB > scoreA);
 
+            // _idx ではなく m.id を第一引数にして確実に特定できるように修正
             return `
-                <div class="bg-white rounded-xl p-3.5 border border-slate-200/80 shadow-sm transition-all">
-                    <!-- 試合名（第1試合など） -->
+                <div onclick="openMatchModal('${m.id || ''}', ${m._idx})" class="bg-white rounded-xl p-3.5 border border-slate-200/80 shadow-sm transition-all cursor-pointer hover:border-indigo-500 hover:shadow-md hover:-translate-y-0.5">
+                    <!-- 試合名 -->
                     <div class="flex justify-between items-center mb-2 pb-1 border-b border-slate-100">
                         <span class="text-[11px] font-bold text-slate-500">${m.title || ''}</span>
                         <span class="text-[10px] px-2 py-0.5 rounded font-bold ${isFinished ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'}">
@@ -294,55 +294,148 @@
             `;
         }
 
-        function calculateTeamSummary(positionsData) {
-            let redWins = 0, whiteWins = 0, hasInput = false;
-            (positionsData || []).forEach(pos => {
-                let r = (pos.red || []).filter(p => p !== '▲' && p !== 'CLEAR' && p !== '引分').length;
-                let w = (pos.white || []).filter(p => p !== '▲' && p !== 'CLEAR' && p !== '引分').length;
-                if ((pos.red && pos.red.length > 0) || (pos.white && pos.white.length > 0)) hasInput = true;
-                if (r > w) redWins++;
-                else if (w > r) whiteWins++;
-            });
-            return {
-                status: !hasInput ? '未実施' : (redWins > whiteWins ? '赤勝ち' : (whiteWins > redWins ? '白勝ち' : '引分')),
-                hasInput, redWins, whiteWins
+        // 【差し替え】 モーダルを開き、先鋒〜大将の正確な部位結果を描画する関数
+        function openMatchModal(matchId, idx) {
+            // ★ currentMatches ではなく正しい tournamentMatches を検索
+            const m = tournamentMatches.find(x => String(x.id) === String(matchId)) || tournamentMatches[idx];
+            if (!m) return;
+
+            // 1. チーム名とトータル勝敗・本数の表示
+            const teamA = m.teamA || m.redTeam || m.team1 || '未定';
+            const teamB = m.teamB || m.whiteTeam || m.team2 || '未定';
+            document.getElementById('modalTeamA').textContent = teamA;
+            document.getElementById('modalTeamB').textContent = teamB;
+
+            const winsA = (m.scoreA !== undefined && m.scoreA !== null) ? m.scoreA : (m.redWins || 0);
+            const winsB = (m.scoreB !== undefined && m.scoreB !== null) ? m.scoreB : (m.whiteWins || 0);
+            const ptsA = (m.honA !== undefined && m.honA !== null) ? m.honA : (m.redPoints || 0);
+            const ptsB = (m.honB !== undefined && m.honB !== null) ? m.honB : (m.whitePoints || 0);
+
+            document.getElementById('modalTotalA').textContent = `${winsA}勝 (${ptsA}本)`;
+            document.getElementById('modalTotalB').textContent = `${winsB}勝 (${ptsB}本)`;
+
+            // 2. 代表戦エリアの表示制御
+            const repSection = document.getElementById('modalRepSection');
+            const winnerTeam = m.details?.winnerTeam;
+            const isTie = (winsA === winsB) && (ptsA === ptsB);
+
+            if (repSection) {
+                if (winnerTeam && (isTie || m.details?.repWinner)) {
+                    repSection.classList.remove('hidden');
+                    const repWinnerEl = document.getElementById('modalRepWinner');
+                    if (repWinnerEl) repWinnerEl.textContent = `勝者： ${winnerTeam}`;
+                } else {
+                    repSection.classList.add('hidden');
+                }
+            }
+
+            // 3. 部位データの安全な文字列化ヘルパー関数
+            const formatScore = (val) => {
+                if (Array.isArray(val)) {
+                    const filtered = val.filter(v => v && v !== '');
+                    return filtered.length > 0 ? filtered.join(' ') : '-';
+                }
+                return val && val !== '' ? String(val) : '-';
             };
+
+            // 4. 先鋒〜大将の個人結果テーブルを描画（final_input.html とデータ構造を完全に一致！）
+            const positionNames = ['先鋒', '次鋒', '中堅', '副将', '大将'];
+            const tbody = document.getElementById('matchModalPositionRows');
+            
+            // ★ final_input.html で保存した m.details.scores を最優先で取得
+            const savedScores = (m.details && m.details.scores) ? m.details.scores : (m.scores || {});
+
+            if (tbody) {
+                tbody.innerHTML = positionNames.map((name, i) => {
+                    // 日本語ポジション名('先鋒'など) または 配列インデックス(0~4) のどちらでも安全にアクセス
+                    const pos = savedScores[name] || savedScores[i] || {};
+
+                    // ★ scoreA / scoreB を最優先で読み取る（過去のテストデータ用の red/white にもフォールバック）
+                    const leftScore = formatScore(pos.scoreA || pos.red || pos.redScore || '');
+                    const rightScore = formatScore(pos.scoreB || pos.white || pos.whiteScore || '');
+
+                    return `
+                        <tr class="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors">
+                            <td class="py-3 px-2 text-center font-medium text-slate-800 text-sm md:text-base truncate">
+                                ${leftScore}
+                            </td>
+                            <td class="py-3 px-1 text-center font-bold text-slate-500 bg-slate-50/80 text-xs md:text-sm border-x border-slate-100">
+                                ${name}
+                            </td>
+                            <td class="py-3 px-2 text-center font-medium text-slate-800 text-sm md:text-base truncate">
+                                ${rightScore}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            // 5. モーダルを表示（中央配置の flex クラスも正しく付与）
+            const modal = document.getElementById('matchDetailModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
         }
 
-        function openDetailModal(idx) {
-            const m = tournamentMatches[idx];
-            const summary = calculateTeamSummary(m.positions);
-            document.getElementById('modalTitle').innerText = `${m.league || '試合'} - ${m.title || ''}`;
-            document.getElementById('modalRedTeam').innerText = m.redTeam || '未定';
-            document.getElementById('modalWhiteTeam').innerText = m.whiteTeam || '未定';
-            document.getElementById('modalRedSummary').innerText = `${summary.redWins}勝`;
-            document.getElementById('modalWhiteSummary').innerText = `${summary.whiteWins}勝`;
-
-            const tbody = document.getElementById('modalPositionRows');
-            tbody.innerHTML = '';
-            positions.forEach((pName, pIdx) => {
-                const pos = (m.positions && m.positions[pIdx]) || { red: [], white: [] };
-                const r = (pos.red || []).filter(p => p !== '▲' && p !== 'CLEAR').length;
-                const w = (pos.white || []).filter(p => p !== '▲' && p !== 'CLEAR').length;
-                const resText = r > w ? '赤勝ち' : (w > r ? '白勝ち' : '引分');
-                const resClass = r > w ? 'bg-red-100 text-red-700' : (w > r ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500');
-
-                const tr = document.createElement('tr');
-                tr.className = 'border-b';
-                tr.innerHTML = `
-                    <td class="p-2 font-bold text-center bg-slate-100 text-slate-700">${pName}</td>
-                    <td class="p-2 text-center font-bold text-red-600">${(pos.red || []).join(' ') || '-'}</td>
-                    <td class="p-2 text-center"><span class="text-[11px] px-2 py-0.5 font-bold rounded ${resClass}">${resText}</span></td>
-                    <td class="p-2 text-center font-bold text-indigo-800">${(pos.white || []).join(' ') || '-'}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-            document.getElementById('detailModal').classList.remove('hidden');
+        // 👈 ★差し替え: モーダルを閉じる関数
+        function closeMatchModal() {
+            const modal = document.getElementById('matchDetailModal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
         }
 
-        function closeModal() {
-            document.getElementById('detailModal').classList.add('hidden');
-        }
     </script>
+    <!-- 👁️ 管理画面UIを忠実に再現した試合詳細（閲覧専用）モーダル -->
+    <div id="matchDetailModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden justify-center items-center p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-300">
+            <!-- モーダルヘッダー -->
+            <div class="bg-[#1e293b] text-white p-3.5 text-center relative font-bold text-base sm:text-lg">
+                <span id="modalMatchTitle">試合詳細</span>
+                <button onclick="closeMatchModal()" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-white text-2xl font-bold">
+                    ✕
+                </button>
+            </div>
+
+            <!-- モーダルコンテンツ -->
+            <div class="p-4 sm:p-6 overflow-y-auto max-h-[85vh]">
+                <!-- 対戦表テーブル（管理画面の match-table スタイルを踏襲） -->
+                <table class="w-full border-collapse border border-slate-300 mb-4 text-base table-fixed">
+                    <thead>
+                        <tr class="bg-[#f1f5f9] text-slate-800 border-b border-slate-300 font-bold">
+                            <th id="modalTeamA" class="py-3 px-2 border border-slate-300 text-center w-[40%] text-indigo-950 truncate">チームA</th>
+                            <th class="py-3 px-2 border border-slate-300 text-center w-[20%] text-sm text-slate-600">ポジション</th>
+                            <th id="modalTeamB" class="py-3 px-2 border border-slate-300 text-center w-[40%] text-indigo-950 truncate">チームB</th>
+                        </tr>
+                    </thead>
+                    <tbody id="matchModalPositionRows" class="divide-y divide-slate-100">
+                        <!-- JSで先鋒〜大将の5行を動的生成 -->
+                    </tbody>
+                    <tfoot>
+                        <tr class="bg-[#f1f5f9] font-bold border-t-2 border-slate-300 text-slate-800">
+                            <td id="modalTotalA" class="py-3 px-2 border border-slate-300 text-center text-indigo-950">0勝 (0本)</td>
+                            <td class="py-3 px-2 border border-slate-300 text-center text-sm text-slate-600">取得結果</td>
+                            <td id="modalTotalB" class="py-3 px-2 border border-slate-300 text-center text-indigo-950">0勝 (0本)</td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <!-- 代表戦表示エリア -->
+                <div id="modalRepSection" class="hidden mb-6 p-3 bg-amber-50 border-2 border-amber-400 rounded-xl text-center">
+                    <div class="text-xs font-bold text-amber-800 mb-1">⚠️ 代表戦による決着</div>
+                    <div id="modalRepWinner" class="text-base font-black text-amber-950"></div>
+                </div>
+
+                <!-- 閉じるボタン -->
+                <div class="flex justify-end">
+                    <button onclick="closeMatchModal()" class="px-8 py-2.5 bg-slate-600 hover:bg-slate-700 text-white font-bold rounded-lg transition shadow">
+                        閉じる
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
