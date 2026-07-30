@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>少年剣道大会 速報</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="common.js"></script>
     <style>
         .modal-scroll {
             max-height: calc(88vh - 100px);
@@ -113,7 +114,8 @@
         // 部門名（和名）と英名キーのマッピング
         const categoryKeyMap = {
             '小学生低学年': 'low_elem',
-            '小学生団体': 'elem',
+            '小学生高学年': 'elem',     // 👈 「小学生高学年」に修正（または追加）
+            '小学生団体': 'elem',       // （念のため残しておいてもOKです）
             '中学生団体': 'mid',
             '中学生女子団体': 'mid_girls'
         };
@@ -138,9 +140,11 @@
                 if (res.ok) {
                     const allMatches = await res.json();
                     const catKey = categoryKeyMap[currentCategory] || currentCategory;
-                    rawMatches = allMatches.filter(m => 
-                        m.category === currentCategory || m.category === catKey
-                    );
+                    rawMatches = allMatches.filter(m => {
+                        const matchCat = normalizeCategoryKey(m.category || m.category_key);
+                        const targetCat = normalizeCategoryKey(currentCategory);
+                        return matchCat === targetCat;
+                    });
                 }
             } catch (e) {
                 rawMatches = localSaved;
