@@ -123,35 +123,74 @@
             }
         }
 
-        async function fetchTournamentData() {
-            let data = [];
-            // 1. トーナメント専用ストレージまたは共通ストレージをチェック
-            try {
-                const raw = localStorage.getItem(`kendo_tournament_matches_${currentCategoryKey}`) ||
-                            localStorage.getItem(`kendo_tournament_${currentCategoryKey}`) ||
-                            localStorage.getItem('kendo_matches');
-                if (raw) {
-                    const parsed = JSON.parse(raw);
-                    if (Array.isArray(parsed)) {
-                        data = parsed.filter(m => {
-                            const cat = m.category_key || m.category || '';
-                            const isSameCat = (cat === currentCategoryKey) || 
-                                              (currentCategoryKey === 'low_elem' && cat === '小学生低学年') ||
-                                              (currentCategoryKey === 'elem' && cat === '小学生高学年') ||
-                                              (currentCategoryKey === 'mid' && cat === '中学生団体') ||
-                                              (currentCategoryKey === 'mid_girls' && cat === '中学生女子団体');
-                            const lg = m.league || m.stage || '';
-                            const isTourneyStage = stages.includes(lg) || (!lg.includes('リーグ') && lg !== '予選リーグ' && lg !== '');
-                            return isSameCat && isTourneyStage;
-                        });
-                    }
-                }
-            } catch(e) {}
+        // 部門名（英名キーと日本語表記の相互チェック用）
+        const categoryNamesMap = {
+            'low_elem': '小学生低学年',
+            'elem': '小学生高学年',
+            'mid': '中学生団体',
+            'mid_girls': '中学生女子団体'
+        };
 
-            tournamentMatches = data;
+        // 👈 ★差し替え①: API(Supabase) + 全LocalStorageからデータを取得する強化版読み込み関数
+        async function fetchTournamentData() {
+            let rawMatches = [];
+            const jpCategoryName = categoryNamesMap[currentCategoryKey] || '';
+
+            // 1. API (Supabase /api/matches) からの取得を最優先で試行
+            try {
+                const res = await fetch('/api/matches');
+                if (res.ok) {
+                    const allMatches = await res.json();
+                    rawMatches = allMatches.filter(m => {
+                        const cat = m.category_key || m.category || '';
+                        return cat === currentCategoryKey || cat === jpCategoryName;
+                    });
+                }
+            } catch (e) {
+                console.log('API取得オフライン - LocalStorageへフォールバックします');
+            }
+
+            // 2. APIでデータが無い場合、各種LocalStorageキーを網羅して検索
+            if (!rawMatches || rawMatches.length === 0) {
+                const storageKeys = [
+                    `kendo_tournament_matches_${currentCategoryKey}`,
+                    `kendo_tournament_${currentCategoryKey}`,
+                    `kendo_matches_${currentCategoryKey}`,
+                    `kendo_matches_${jpCategoryName}`,
+                    'kendo_matches'
+                ];
+
+                for (const key of storageKeys) {
+                    try {
+                        const raw = localStorage.getItem(key);
+                        if (raw) {
+                            const parsed = JSON.parse(raw);
+                            if (Array.isArray(parsed) && parsed.length > 0) {
+                                rawMatches = parsed.filter(m => {
+                                    const cat = m.category_key || m.category || '';
+                                    return cat === currentCategoryKey || cat === jpCategoryName || !m.category;
+                                });
+                                if (rawMatches.length > 0) break;
+                            }
+                        }
+                    } catch (e) {}
+                }
+            }
+
+            // 3. 「〇〇リーグ」以外の決勝トーナメント対象試合のみに絞り込み
+            tournamentMatches = rawMatches.filter(m => {
+                const lg = m.league || m.stage || '';
+                const title = m.title || '';
+                // 予選リーグを除外し、トーナメントに関連するキーワード（回戦・決勝など）を含むか判定
+                const isYosen = lg.includes('リーグ') || lg === '予選リーグ';
+                const hasTourneyKeyword = /[1-9１-９]回戦|準決勝|決勝|トーナメント/.test(lg + ' ' + title);
+                return !isYosen && (hasTourneyKeyword || lg !== '');
+            });
+
             renderTournamentColumns();
         }
 
+        // 👈 ★差し替え: 管理画面(final_input.html)と同一の回戦判定＆描画関数
         function renderTournamentColumns() {
             const container = document.getElementById('tournamentContainer');
             if (!tournamentMatches || tournamentMatches.length === 0) {
@@ -163,59 +202,93 @@
                 return;
             }
 
-            // 回戦ごとにグループ化
-            const grouped = {};
-            stages.forEach(s => grouped[s] = []);
-            tournamentMatches.forEach((m, idx) => {
-                m._idx = idx;
-                const stage = m.league || m.stage || '1回戦';
-                if (!grouped[stage]) grouped[stage] = [];
-                grouped[stage].push(m);
+            // 1. 管理画面と同じロジック：タイトル("1回戦 第1試合"等)から正確に回戦(数値)を取得
+            const roundMap = {};
+            tournamentMatches.forEach(m => {
+                let roundNum = 1;
+                const safeTitle = m.title || '';
+
+                // 「◯回戦」の文字を最優先で解析
+                const titleMatch = safeTitle.match(/(\d+)回戦/);
+                if (titleMatch) {
+                    roundNum = parseInt(titleMatch[1], 10);
+                } else if (safeTitle.includes('決勝') && !safeTitle.includes('準')) {
+                    roundNum = 99;
+                } else if (safeTitle.includes('準決勝')) {
+                    roundNum = 98;
+                } else {
+                    roundNum = m.round || (m.details && m.details.round) || 1;
+                }
+
+                if (!roundMap[roundNum]) roundMap[roundNum] = [];
+                roundMap[roundNum].push(m);
             });
 
-            // 存在する回戦のみを抽出して列を作る
-            const activeStages = stages.filter(s => grouped[s] && grouped[s].length > 0);
-            if (activeStages.length === 0) {
-                container.innerHTML = `<div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">トーナメント試合がありません</div>`;
-                return;
-            }
+            // 回戦の数字順（1 → 2 → 3 → ... → 98(準決勝) → 99(決勝)）にソート
+            const sortedRounds = Object.keys(roundMap).sort((a, b) => Number(a) - Number(b));
 
-            // ★管理画面風の多列カラム・フレックスコンテナの生成
+            // ラウンド名自動決定
+            const getRoundTitle = (rNum) => {
+                const num = Number(rNum);
+                if (num === 99) return '🏆 決勝';
+                if (num === 98) return '準決勝';
+                return `${num}回戦`;
+            };
+
+            // 2. 多列カラム（フレックスコンテナ）の生成
             container.innerHTML = `
                 <div class="flex gap-6 items-start min-w-max px-1">
-                    ${activeStages.map(stageName => `
-                        <div class="w-64 sm:w-72 bg-slate-200/60 rounded-2xl p-3 border border-slate-300/80 shadow-inner">
-                            <h3 class="font-black text-center text-sm text-indigo-950 pb-2 mb-3 border-b border-slate-300">
-                                ${stageName}
-                            </h3>
-                            <div class="space-y-3">
-                                ${grouped[stageName].map(m => renderCard(m)).join('')}
+                    ${sortedRounds.map(rNum => {
+                        // 試合ID順にソート
+                        roundMap[rNum].sort((a, b) => (a.id || 0) - (b.id || 0));
+                        return `
+                            <div class="w-64 sm:w-72 bg-slate-200/60 rounded-2xl p-3 border border-slate-300/80 shadow-inner">
+                                <h3 class="font-black text-center text-sm text-indigo-950 pb-2 mb-3 border-b border-slate-300">
+                                    ${getRoundTitle(rNum)}
+                                </h3>
+                                <div class="space-y-3">
+                                    ${roundMap[rNum].map(m => renderCard(m)).join('')}
+                                </div>
                             </div>
-                        </div>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </div>
             `;
         }
 
+        // 👈 ★差し替え: チーム名(teamA/B)と勝数(scoreA/B)を正確に表示するカード関数
         function renderCard(m) {
-            const summary = calculateTeamSummary(m.positions);
-            const isFinished = m.isFinished || (summary.hasInput && summary.status !== '未実施');
-            let bgClass = "bg-white hover:border-indigo-400 border-slate-200";
-            if (isFinished) bgClass = "bg-slate-50 border-slate-300";
+            // 変数名の違い(teamA vs redTeam等)を完全吸収
+            const teamA = m.teamA || m.redTeam || m.team1 || '未定';
+            const teamB = m.teamB || m.whiteTeam || m.team2 || '未定';
+            const scoreA = (m.scoreA !== undefined && m.scoreA !== null) ? m.scoreA : 0;
+            const scoreB = (m.scoreB !== undefined && m.scoreB !== null) ? m.scoreB : 0;
+
+            // 勝者側の強調判定
+            const isFinished = m.status === 'finished' || (scoreA > 0 || scoreB > 0);
+            const winA = isFinished && (scoreA > scoreB);
+            const winB = isFinished && (scoreB > scoreA);
 
             return `
-                <div onclick="openDetailModal(${m._idx})" class="p-3 rounded-xl border ${bgClass} shadow-sm cursor-pointer transition">
-                    <div class="flex justify-between text-[11px] font-bold text-slate-400 mb-1">
-                        <span>${m.title || '試合'}</span>
-                        <span>${isFinished ? '終了' : '試合前'}</span>
+                <div class="bg-white rounded-xl p-3.5 border border-slate-200/80 shadow-sm transition-all">
+                    <!-- 試合名（第1試合など） -->
+                    <div class="flex justify-between items-center mb-2 pb-1 border-b border-slate-100">
+                        <span class="text-[11px] font-bold text-slate-500">${m.title || ''}</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded font-bold ${isFinished ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'}">
+                            ${isFinished ? '試合終了' : '試合前'}
+                        </span>
                     </div>
-                    <div class="flex justify-between items-center text-xs font-black text-slate-800 py-1 border-b border-slate-100">
-                        <span class="truncate pr-1">${m.redTeam || '未定'}</span>
-                        <span class="text-red-600 font-bold">${summary.redWins}</span>
+
+                    <!-- チームA -->
+                    <div class="flex justify-between items-center py-1 ${winA ? 'font-black text-indigo-950' : 'text-slate-700'}">
+                        <span class="text-sm truncate pr-2">${teamA}</span>
+                        <span class="text-sm font-bold ${winA ? 'text-amber-600' : ''}">${scoreA}</span>
                     </div>
-                    <div class="flex justify-between items-center text-xs font-black text-slate-800 pt-1">
-                        <span class="truncate pr-1">${m.whiteTeam || '未定'}</span>
-                        <span class="text-indigo-800 font-bold">${summary.whiteWins}</span>
+
+                    <!-- チームB -->
+                    <div class="flex justify-between items-center py-1 ${winB ? 'font-black text-indigo-950' : 'text-slate-700'}">
+                        <span class="text-sm truncate pr-2">${teamB}</span>
+                        <span class="text-sm font-bold ${winB ? 'text-amber-600' : ''}">${scoreB}</span>
                     </div>
                 </div>
             `;
