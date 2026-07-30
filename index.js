@@ -713,6 +713,80 @@ app.post('/api/tournament/save_final', async (req, res) => {
     }
 });
 
+// ==========================================
+// 🏆 最終結果タブ専用 API（英語ID⇔日本語名の自動マッピング対応版）
+// ==========================================
+let finalResultsCache = {}; // 部門ごとのデータを保持するメモリキャッシュ
+
+// ① 運営画面からの保存（英語ID・日本語名どちらが来ても安全に保存）
+app.post('/api/results', (req, res) => {
+    try {
+        const data = req.body;
+        const category = data.category || 'default';
+        
+        finalResultsCache[category] = {
+            ...data,
+            updated_at: new Date().toISOString()
+        };
+
+        console.log(`[結果保存成功] 部門キー: ${category}`, finalResultsCache[category]);
+        res.json({ success: true, message: '結果を保存しました' });
+    } catch (err) {
+        console.error('[結果保存エラー]', err);
+        res.status(500).json({ success: false });
+    }
+});
+
+// ② 観客画面への配信（自動変換＆全件一覧対応）
+app.get('/api/results', (req, res) => {
+    try {
+        const { category } = req.query;
+        console.log(`[結果取得要求] リクエスト部門: ${category || '全件(undefined)'}`);
+
+        // A. category指定がない（または undefined の）場合 → 保存済みの「全結果の配列」を返す
+        if (!category || category === 'undefined') {
+            return res.json(Object.values(finalResultsCache));
+        }
+
+        // B. 完全一致があれば即返す（例: low_elem で一致）
+        if (finalResultsCache[category]) {
+            return res.json(finalResultsCache[category]);
+        }
+
+        // C. 【自動変換マッピング】日本語名 ⇔ 英語ID を相互に変換して検索
+        const keyMap = {
+            'low_elem': ['小学生低学年', 'low_elem'],
+            'elem': ['小学生高学年', 'elem', 'high_elem'],
+            'mid_girls': ['中学生女子', 'mid_girls', 'jhs_women'],
+            'mid': ['中学生団体', '中学生男子', 'mid', 'jhs_men']
+        };
+
+        // 要求されたカテゴリー文字が含まれるキーを探す
+        const targetEntry = Object.entries(finalResultsCache).find(([savedKey, savedData]) => {
+            // 1. マッピング表のキーワードに合致するか
+            const validKeywords = keyMap[savedKey] || [savedKey];
+            const matchByMap = validKeywords.some(kw => category.includes(kw) || kw.includes(category));
+            
+            // 2. タイトル（大会名）にカテゴリー文字が含まれているか
+            const matchByTitle = (savedData.title || '').includes(category);
+
+            return matchByMap || matchByTitle;
+        });
+
+        if (targetEntry) {
+            console.log(`[自動変換ヒット] '${category}' → '${targetEntry[0]}' の結果を返します`);
+            return res.json(targetEntry[1]);
+        }
+
+        // D. どれにもヒットしなければ空オブジェクトを返す
+        res.json({});
+    } catch (err) {
+        console.error('[結果取得エラー]', err);
+        res.status(500).json({ success: false });
+    }
+});
+
+
 // 🚀 サーバー起動
 app.listen(PORT, () => {
     console.log(`[🟢 Server Active] Tournament Manager is running on port ${PORT}`);

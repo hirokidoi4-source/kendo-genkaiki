@@ -412,52 +412,88 @@
             }).join('');
         }
 
-        function renderFinalResultView() {
+        // ==========================================
+        // 🏆 最終結果タブ 描画関数（強化版：空振り防止＆自動フォールバック機能付き）
+        // ==========================================
+        async function renderFinalResultView() {
             const container = document.getElementById('finalResultContainer');
-            if (!finalResultData) {
-                container.innerHTML = `<div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">まだ最終結果は配信されていません</div>`;
-                return;
-            }
+            if (!container) return;
 
-            // admin_finish.html からの配信データ構造に合わせた表彰カード描画
-            container.innerHTML = `
-                <div class="bg-gradient-to-br from-amber-50 to-white rounded-2xl p-6 border-2 border-amber-300 shadow-lg text-center max-w-xl mx-auto space-y-6">
-                    <div class="border-b border-amber-200 pb-3">
-                        <span class="text-xs font-black px-3 py-1 bg-amber-500 text-white rounded-full">大会最終結果</span>
-                        <h2 class="text-xl font-black text-slate-900 mt-2">${finalResultData.title || currentCategory}</h2>
-                        <p class="text-xs font-bold text-slate-500 mt-1">${finalResultData.status || '全試合終了'}</p>
-                    </div>
+            // ① ローディング表示
+            container.innerHTML = `<div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">最新の結果を読み込み中...</div>`;
 
-                    <div class="space-y-3">
-                        <div class="bg-amber-100/50 border border-amber-300 p-4 rounded-xl flex items-center gap-4">
-                            <span class="text-3xl">🥇</span>
-                            <div class="text-left">
-                                <div class="text-xs font-bold text-amber-800">優勝</div>
-                                <div class="text-lg font-black text-slate-900">${finalResultData.winner || '未発表'}</div>
-                            </div>
+            try {
+                // ② サーバーへ結果をリクエスト（全件・個別どちらも処理できるようにまずはリクエスト）
+                const res = await fetch(`/api/results?category=${encodeURIComponent(currentCategory)}`);
+                let finalResultData = await res.json();
+
+                // 【安全フォールバック】もしID指定でデータが空だった場合、全結果から「現在の部門名」に合致するものか、最新1件を取得する
+                if (!finalResultData || (!finalResultData.winner && !finalResultData.title)) {
+                    console.log('[結果デバッグ] 個別取得が空だったため、全結果一覧から再確認します...');
+                    const allRes = await fetch('/api/results');
+                    const allData = await allRes.json();
+                    
+                    if (Array.isArray(allData) && allData.length > 0) {
+                        // 同じ category または現在選択中の部門のものがあれば優先、なければ直近に更新されたものを拾う
+                        finalResultData = allData.find(d => d.category === currentCategory) 
+                                      || allData.find(d => (d.title || '').includes(currentCategory))
+                                      || allData[allData.length - 1];
+                    }
+                }
+
+                console.log('[結果デバッグ] 最終的に描画するデータ:', finalResultData);
+
+                // ③ それでもデータが無い場合のみ「配信未完了」と表示
+                if (!finalResultData || !finalResultData.winner) {
+                    container.innerHTML = `<div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">まだ最終結果は配信されていません</div>`;
+                    return;
+                }
+
+                // ④ 表彰カードの描画（サーバーのキー名: runner_up / third_place_1 に完全対応！）
+                container.innerHTML = `
+                    <div class="bg-gradient-to-br from-amber-50 to-white rounded-2xl p-6 border-2 border-amber-300 shadow-lg text-center max-w-xl mx-auto space-y-6">
+                        <div class="border-b border-amber-200 pb-3">
+                            <span class="text-xs font-black px-3 py-1 bg-amber-500 text-white rounded-full">大会最終結果</span>
+                            <h2 class="text-xl font-black text-slate-900 mt-2">${finalResultData.title || currentCategory}</h2>
+                            <p class="text-xs font-bold text-slate-500 mt-1">
+                                ${finalResultData.status === 'completed' ? '🏆 全試合終了 (結果発表)' : '⚔️ 試合進行中'}
+                            </p>
                         </div>
 
-                        <div class="bg-slate-100 border border-slate-300 p-4 rounded-xl flex items-center gap-4">
-                            <span class="text-3xl">🥈</span>
-                            <div class="text-left">
-                                <div class="text-xs font-bold text-slate-600">準優勝</div>
-                                <div class="text-lg font-black text-slate-900">${finalResultData.runnerUp || '未発表'}</div>
+                        <div class="space-y-3">
+                            <div class="bg-amber-100/50 border border-amber-300 p-4 rounded-xl flex items-center gap-4">
+                                <span class="text-3xl">🥇</span>
+                                <div class="text-left">
+                                    <div class="text-xs font-bold text-amber-800">優勝</div>
+                                    <div class="text-lg font-black text-slate-900">${finalResultData.winner || '未発表'}</div>
+                                </div>
                             </div>
-                        </div>
 
-                        <div class="bg-orange-50 border border-orange-200 p-4 rounded-xl flex items-center gap-4">
-                            <span class="text-3xl">🥉</span>
-                            <div class="text-left">
-                                <div class="text-xs font-bold text-orange-800">第3位</div>
-                                <div class="text-lg font-black text-slate-900">
-                                    ${finalResultData.third1 || '未発表'}
-                                    ${finalResultData.third2 ? ` / ${finalResultData.third2}` : ''}
+                            <div class="bg-slate-100 border border-slate-300 p-4 rounded-xl flex items-center gap-4">
+                                <span class="text-3xl">🥈</span>
+                                <div class="text-left">
+                                    <div class="text-xs font-bold text-slate-600">準優勝</div>
+                                    <div class="text-lg font-black text-slate-900">${finalResultData.runner_up || '未発表'}</div>
+                                </div>
+                            </div>
+
+                            <div class="bg-orange-50 border border-orange-200 p-4 rounded-xl flex items-center gap-4">
+                                <span class="text-3xl">🥉</span>
+                                <div class="text-left">
+                                    <div class="text-xs font-bold text-orange-800">第3位</div>
+                                    <div class="text-lg font-black text-slate-900">
+                                        ${finalResultData.third_place_1 || '未発表'}
+                                        ${finalResultData.third_place_2 ? ` / ${finalResultData.third_place_2}` : ''}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            `;
+                `;
+            } catch (err) {
+                console.error('最終結果描画エラー:', err);
+                container.innerHTML = `<div class="text-center py-12 text-red-500 font-bold bg-white rounded-2xl border">結果の読み込みに失敗しました</div>`;
+            }
         }
 
         // 👈 ★追加: 決勝トーナメントデータ専用の読み込み関数（独立させてシンプルに管理）
