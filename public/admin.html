@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>大会運営ダッシュボード - 少年剣道大会</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="common.js"></script>
 </head>
 <body class="bg-gray-100 text-gray-800 font-sans p-6 md:p-10">
 
@@ -67,11 +68,12 @@
                 <div class="mt-6 pt-6 border-t border-gray-100 bg-gray-50/50 p-4 rounded-lg">
                     <h3 class="font-bold text-sm text-green-900 flex items-center gap-1 mb-2">⚡ 同門回避 自動生成</h3>
                     <div class="mb-3">
-                        <select id="categorySelect" class="w-full p-2 border border-gray-300 rounded text-sm font-bold bg-white focus:outline-none focus:ring-2 focus:ring-green-500">
-                            <option value="小学生低学年">小学生低学年</option>
-                            <option value="小学生団体">小学生団体</option>
-                            <option value="中学生男子">中学生男子</option>
-                            <option value="中学生女子">中学生女子</option>
+                        <select id="categorySelect" class="w-full border rounded p-2 mb-4">
+                            <!-- 💡 value 属性に必ず DB 標準の英語キーを指定 -->
+                            <option value="low_elem">小学生低学年</option>
+                            <option value="elem">小学生団体</option>
+                            <option value="mid">中学生団体</option>
+                            <option value="mid_girls">中学生女子</option>
                         </select>
                     </div>
                     <div class="space-y-2">
@@ -142,60 +144,166 @@
         'jhs_women': 'mid_girls'
     };
 
-  // 予選リーグ生成実行関数（またはボタンクリックイベント内）
-  async function handleGenerateLeagues() {
-      const rawCategory = document.getElementById('categorySelect').value;
-      // 表記ブレを統一されたキー（low_elem / elem / mid / mid_girls）に変換
-      const category = ADMIN_CATEGORY_MAP[rawCategory] || rawCategory;
 
-      try {
-          const response = await fetch('/api/leagues/generate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ category: category })
-          });
+    // === 【変更箇所：admin.html の <script> 内 handleCSVImport 関数】 ===
+    // ※独自の normalizeCategoryKey() は書かず、common.js の関数のみを使用します
 
-          const result = await response.json();
+    async function handleCSVImport() {
+        // 1. DOMから安全にファイルを選択
+        const fileInput = document.getElementById('csvFile');
+        const file = fileInput ? fileInput.files[0] : null;
 
-          if (response.ok && result.success !== false) {
-              alert(`【成功】${rawCategory} の予選リーグをSupabaseに生成・保存しました！`);
-          } else {
-              alert(`【エラー】保存に失敗しました: ${result.error || result.message || '不明なエラー'}`);
-          }
-      } catch (error) {
-          console.error('Supabase通信エラー:', error);
-          alert('【通信エラー】サーバー/Supabaseへのデータ送信に失敗しました。');
-      }
-  }    
+        if (!file) {
+            alert('インポートするCSVファイルを選択してください。');
+            return;
+        }
 
-    // ⚔️ 予選リーグ / 決勝トーナメント生成処理
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                // 💡 【重要セキュリティガード 1】
+                // common.js の共通正規化関数が読み込まれているかを厳格チェック
+                if (typeof normalizeCategoryKey !== 'function') {
+                    throw new Error('共通正規化関数 normalizeCategoryKey が見つかりません。common.js が正しく読み込まれているか確認してください。');
+                }
+
+                const text = e.target.result;
+                const lines = text.split(/\r\n|\n/);
+                const teamsToInsert = [];
+                const VALID_CATEGORIES = ['low_elem', 'elem', 'mid', 'mid_girls'];
+
+                lines.forEach((line, index) => {
+                    const trimmedLine = line.trim();
+                    if (!trimmedLine) return; // 空行はスキップ
+
+                    const cols = trimmedLine.split(',').map(c => c.trim());
+
+                    // ヘッダー行（1行目）のスキップ判定
+                    if (index === 0 && (cols[0].includes('category') || cols[0].includes('部門') || cols[0].includes('カテゴリー'))) {
+                        return;
+                    }
+
+                    const rawCategory = cols[0] || '';
+                    const teamName = cols[1] || '';
+                    const organization = cols[2] || teamName;
+
+                    if (!teamName) return;
+
+                    // 2. common.js の normalizeCategoryKey() を呼び出して標準キーへ変換
+                    const categoryKey = normalizeCategoryKey(rawCategory);
+
+                    // 💡 【重要セキュリティガード 2】
+                    // 変換後のキーがDB標準キー（low_elem, elem, mid, mid_girls）に完全一致するか検証
+                    if (!VALID_CATEGORIES.includes(categoryKey)) {
+                        throw new Error(`行 ${index + 1}: 無効なカテゴリー「${rawCategory}」（変換結果: ${categoryKey}）です。DB標準キーへの正規化に失敗しました。`);
+                    }
+
+                    teamsToInsert.push({
+                        category: categoryKey,
+                        team_name: teamName,
+                        organization: organization
+                    });
+                });
+
+                if (teamsToInsert.length === 0) {
+                    alert('インポート可能なデータが見つかりませんでした。');
+                    return;
+                }
+
+                // 3. バックエンドの専用APIへ POST 送信
+                const response = await fetch('/api/teams/import', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(teamsToInsert)
+                });
+
+                const result = await response.json();
+
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || 'サーバー側でインポートに失敗しました。');
+                }
+
+                alert(`✅ ${result.count || teamsToInsert.length}件のチームデータを正常にインポートしました！`);
+
+                // チーム一覧の再読み込み関数があれば呼び出し
+                if (typeof fetchTeams === 'function') {
+                    fetchTeams();
+                }
+
+            } catch (err) {
+                console.error('CSV Import Error:', err);
+                alert('❌ CSVのインポートに失敗しました:\n' + err.message);
+            } finally {
+                // ファイル選択をDOM経由でリセット
+                if (fileInput) fileInput.value = '';
+            }
+        };
+
+        reader.readAsText(file, 'UTF-8');
+    }
+
+    // === 【変更箇所：admin.html の <script> 内 generateMatches 関数】 ===
+
     async function generateMatches(type) {
         const categorySelect = document.getElementById('categorySelect');
-        if (!categorySelect) return alert('❌ 部門選択ボックスが見つかりません');
+        if (!categorySelect) {
+            alert('カテゴリー選択肢が見つかりません。');
+            return;
+        }
 
-        const rawCategory = categorySelect.value;
-        const categoryName = categorySelect.options[categorySelect.selectedIndex].text;
-        
-        // 💡 CATEGORY_MAPを通じてデータベース登録用の統一カテゴリID（high_elem等）に変換
-        const category = CATEGORY_MAP[rawCategory] || rawCategory; 
-        const typeName = (type === 'league') ? '予選リーグ' : '決勝トーナメント';
+        const rawCategory = categorySelect.value || categorySelect.options[categorySelect.selectedIndex]?.text || '';
+
+        // 💡 【セキュリティガード 1】 common.js の共通関数で必ず正規化（Single Source of Truth）
+        if (typeof normalizeCategoryKey !== 'function') {
+            alert('❌ 共通関数 normalizeCategoryKey が見つかりません。common.js が正しく読み込まれているか確認してください。');
+            return;
+        }
+
+        const categoryKey = normalizeCategoryKey(rawCategory);
+        const VALID_CATEGORIES = ['low_elem', 'elem', 'mid', 'mid_girls'];
+
+        // 💡 【セキュリティガード 2】 DB標準キーと一致しない無効なキーならリクエスト送信をブロック
+        if (!VALID_CATEGORIES.includes(categoryKey)) {
+            alert(`❌ 無効なカテゴリー名（${rawCategory}）が選択されました。生成処理を中止します。`);
+            return;
+        }
+
+        const typeName = type === 'league' ? '予選リーグ' : '決勝トーナメント';
+        const confirmMsg = `「${categorySelect.options[categorySelect.selectedIndex]?.text}」の${typeName}を自動生成しますか？\n（※既存の同ステージ試合データは上書きされます）`;
+
+        if (!confirm(confirmMsg)) return;
 
         try {
-            const res = await fetch('/api/tournament/generate', {
+            // バックエンド API へ正規化済みの categoryKey を送信
+            const response = await fetch('/api/tournament/generate', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ category, type })
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    category: categoryKey, // 💡 正規化されたキー（low_elem, elem など）を必ず送信
+                    type: type
+                })
             });
-            const result = await res.json();
 
-            if (res.ok && result.success) {
-                alert(`✅ ${categoryName} の${typeName}生成が完了しました！`);
-            } else {
-                alert(`❌ 生成失敗: ${result.error || '処理に失敗しました'}`);
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'サーバー側での生成処理に失敗しました。');
             }
+
+            alert(`✅ ${result.message || `${typeName}の生成に成功しました！`}`);
+
+            // 試合一覧の更新処理があれば呼び出し
+            if (typeof fetchMatches === 'function') {
+                fetchMatches();
+            }
+
         } catch (err) {
-            console.error('試合生成エラー:', err);
-            alert('❌ 通信エラーが発生しました。');
+            console.error('Tournament Generate Error:', err);
+            alert(`❌ ${typeName}の生成に失敗しました:\n${err.message}`);
         }
     }
 
