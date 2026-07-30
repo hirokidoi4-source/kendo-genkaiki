@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>決勝トーナメント速報 - 少年剣道大会</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="common.js"></script>
+    <style>
+        /* 横スクロールバーを見やすくスムーズに */
+        .tourney-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col">
+
+    <!-- ナビバー -->
+    <header class="bg-indigo-950 text-white p-4 shadow-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <a href="spectator.html" class="bg-indigo-800 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">
+                    ← 予選・結果へ戻る
+                </a>
+                <h1 class="text-base sm:text-xl font-black flex items-center gap-2">
+                    🏆 決勝トーナメント速報
+                </h1>
+            </div>
+            <span class="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> リアルタイム
+            </span>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 space-y-6">
+        <!-- 部門選択ボタン -->
+        <div class="bg-white p-2.5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-2 items-center">
+            <span class="text-xs font-black text-slate-400 px-2">対象部門:</span>
+            <button onclick="switchCategory('low_elem')" id="btn-low_elem" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition bg-slate-100 text-slate-600">① 小学生低学年</button>
+            <button onclick="switchCategory('elem')" id="btn-elem" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition bg-slate-100 text-slate-600">② 小学生高学年</button>
+            <button onclick="switchCategory('mid')" id="btn-mid" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition bg-slate-100 text-slate-600">③ 中学生団体</button>
+            <button onclick="switchCategory('mid_girls')" id="btn-mid_girls" class="cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition bg-slate-100 text-slate-600">④ 中学生女子団体</button>
+        </div>
+
+        <!-- トーナメントカラム表示エリア（横スクロール対応） -->
+        <div id="tournamentContainer" class="tourney-scroll pb-6">
+            <div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">
+                トーナメントデータを読み込み中...
+            </div>
+        </div>
+    </main>
+
+    <!-- 対戦詳細モーダル -->
+    <div id="detailModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-indigo-900 text-white p-3 sm:p-4 flex justify-between items-center shrink-0">
+                <h3 id="modalTitle" class="font-bold text-base">試合詳細</h3>
+                <button onclick="closeModal()" class="text-slate-300 hover:text-white text-2xl font-bold px-2">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto space-y-4">
+                <div class="bg-slate-100 rounded-xl p-3 border flex justify-between items-center text-center">
+                    <div class="w-5/12">
+                        <div id="modalRedTeam" class="font-black text-sm text-red-700 truncate">赤チーム</div>
+                        <div id="modalRedSummary" class="text-xs text-red-600 font-bold mt-0.5">-</div>
+                    </div>
+                    <div class="w-2/12 font-black text-xs text-slate-400">VS</div>
+                    <div class="w-5/12">
+                        <div id="modalWhiteTeam" class="font-black text-sm text-slate-800 truncate">白チーム</div>
+                        <div id="modalWhiteSummary" class="text-xs text-slate-600 font-bold mt-0.5">-</div>
+                    </div>
+                </div>
+                <table class="w-full text-xs sm:text-sm border-collapse">
+                    <thead>
+                        <tr class="border-b bg-slate-50 text-slate-500 font-bold">
+                            <th class="p-2 text-center">位置</th>
+                            <th class="p-2 text-center">赤 取得部位</th>
+                            <th class="p-2 text-center">勝敗</th>
+                            <th class="p-2 text-center">白 取得部位</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modalPositionRows"></tbody>
+                </table>
+            </div>
+            <div class="p-3 bg-slate-50 border-t flex justify-end shrink-0">
+                <button onclick="closeModal()" class="px-5 py-2 bg-slate-200 hover:bg-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-700">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const positions = ['先鋒', '次鋒', '中堅', '副将', '大将'];
+        const stages = ['1回戦', '2回戦', '3回戦', '4回戦', '5回戦'];
+        
+        let currentCategoryKey = 'low_elem';
+        let tournamentMatches = [];
+
+        // 初期化: URLパラメータから部門をセット
+        window.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const cat = params.get('category');
+            if (cat && ['low_elem', 'elem', 'mid', 'mid_girls'].includes(cat)) {
+                currentCategoryKey = cat;
+            }
+            updateCategoryUi();
+            fetchTournamentData();
+            setInterval(fetchTournamentData, 5000);
+        });
+
+        function switchCategory(key) {
+            currentCategoryKey = key;
+            updateCategoryUi();
+            fetchTournamentData();
+        }
+
+        function updateCategoryUi() {
+            document.querySelectorAll('.cat-btn').forEach(btn => {
+                btn.className = "cat-btn px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition bg-slate-100 text-slate-600 hover:bg-slate-200";
+            });
+            const activeBtn = document.getElementById(`btn-${currentCategoryKey}`);
+            if (activeBtn) {
+                activeBtn.className = "cat-btn px-4 py-2 rounded-xl font-black text-xs sm:text-sm transition bg-indigo-600 text-white shadow-sm";
+            }
+        }
+
+        async function fetchTournamentData() {
+            let data = [];
+            // 1. トーナメント専用ストレージまたは共通ストレージをチェック
+            try {
+                const raw = localStorage.getItem(`kendo_tournament_matches_${currentCategoryKey}`) ||
+                            localStorage.getItem(`kendo_tournament_${currentCategoryKey}`) ||
+                            localStorage.getItem('kendo_matches');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        data = parsed.filter(m => {
+                            const cat = m.category_key || m.category || '';
+                            const isSameCat = (cat === currentCategoryKey) || 
+                                              (currentCategoryKey === 'low_elem' && cat === '小学生低学年') ||
+                                              (currentCategoryKey === 'elem' && cat === '小学生高学年') ||
+                                              (currentCategoryKey === 'mid' && cat === '中学生団体') ||
+                                              (currentCategoryKey === 'mid_girls' && cat === '中学生女子団体');
+                            const lg = m.league || m.stage || '';
+                            const isTourneyStage = stages.includes(lg) || (!lg.includes('リーグ') && lg !== '予選リーグ' && lg !== '');
+                            return isSameCat && isTourneyStage;
+                        });
+                    }
+                }
+            } catch(e) {}
+
+            tournamentMatches = data;
+            renderTournamentColumns();
+        }
+
+        function renderTournamentColumns() {
+            const container = document.getElementById('tournamentContainer');
+            if (!tournamentMatches || tournamentMatches.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">
+                        対象部門の決勝トーナメントデータがまだ公開・保存されていません
+                    </div>
+                `;
+                return;
+            }
+
+            // 回戦ごとにグループ化
+            const grouped = {};
+            stages.forEach(s => grouped[s] = []);
+            tournamentMatches.forEach((m, idx) => {
+                m._idx = idx;
+                const stage = m.league || m.stage || '1回戦';
+                if (!grouped[stage]) grouped[stage] = [];
+                grouped[stage].push(m);
+            });
+
+            // 存在する回戦のみを抽出して列を作る
+            const activeStages = stages.filter(s => grouped[s] && grouped[s].length > 0);
+            if (activeStages.length === 0) {
+                container.innerHTML = `<div class="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border">トーナメント試合がありません</div>`;
+                return;
+            }
+
+            // ★管理画面風の多列カラム・フレックスコンテナの生成
+            container.innerHTML = `
+                <div class="flex gap-6 items-start min-w-max px-1">
+                    ${activeStages.map(stageName => `
+                        <div class="w-64 sm:w-72 bg-slate-200/60 rounded-2xl p-3 border border-slate-300/80 shadow-inner">
+                            <h3 class="font-black text-center text-sm text-indigo-950 pb-2 mb-3 border-b border-slate-300">
+                                ${stageName}
+                            </h3>
+                            <div class="space-y-3">
+                                ${grouped[stageName].map(m => renderCard(m)).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderCard(m) {
+            const summary = calculateTeamSummary(m.positions);
+            const isFinished = m.isFinished || (summary.hasInput && summary.status !== '未実施');
+            let bgClass = "bg-white hover:border-indigo-400 border-slate-200";
+            if (isFinished) bgClass = "bg-slate-50 border-slate-300";
+
+            return `
+                <div onclick="openDetailModal(${m._idx})" class="p-3 rounded-xl border ${bgClass} shadow-sm cursor-pointer transition">
+                    <div class="flex justify-between text-[11px] font-bold text-slate-400 mb-1">
+                        <span>${m.title || '試合'}</span>
+                        <span>${isFinished ? '終了' : '試合前'}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs font-black text-slate-800 py-1 border-b border-slate-100">
+                        <span class="truncate pr-1">${m.redTeam || '未定'}</span>
+                        <span class="text-red-600 font-bold">${summary.redWins}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs font-black text-slate-800 pt-1">
+                        <span class="truncate pr-1">${m.whiteTeam || '未定'}</span>
+                        <span class="text-indigo-800 font-bold">${summary.whiteWins}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function calculateTeamSummary(positionsData) {
+            let redWins = 0, whiteWins = 0, hasInput = false;
+            (positionsData || []).forEach(pos => {
+                let r = (pos.red || []).filter(p => p !== '▲' && p !== 'CLEAR' && p !== '引分').length;
+                let w = (pos.white || []).filter(p => p !== '▲' && p !== 'CLEAR' && p !== '引分').length;
+                if ((pos.red && pos.red.length > 0) || (pos.white && pos.white.length > 0)) hasInput = true;
+                if (r > w) redWins++;
+                else if (w > r) whiteWins++;
+            });
+            return {
+                status: !hasInput ? '未実施' : (redWins > whiteWins ? '赤勝ち' : (whiteWins > redWins ? '白勝ち' : '引分')),
+                hasInput, redWins, whiteWins
+            };
+        }
+
+        function openDetailModal(idx) {
+            const m = tournamentMatches[idx];
+            const summary = calculateTeamSummary(m.positions);
+            document.getElementById('modalTitle').innerText = `${m.league || '試合'} - ${m.title || ''}`;
+            document.getElementById('modalRedTeam').innerText = m.redTeam || '未定';
+            document.getElementById('modalWhiteTeam').innerText = m.whiteTeam || '未定';
+            document.getElementById('modalRedSummary').innerText = `${summary.redWins}勝`;
+            document.getElementById('modalWhiteSummary').innerText = `${summary.whiteWins}勝`;
+
+            const tbody = document.getElementById('modalPositionRows');
+            tbody.innerHTML = '';
+            positions.forEach((pName, pIdx) => {
+                const pos = (m.positions && m.positions[pIdx]) || { red: [], white: [] };
+                const r = (pos.red || []).filter(p => p !== '▲' && p !== 'CLEAR').length;
+                const w = (pos.white || []).filter(p => p !== '▲' && p !== 'CLEAR').length;
+                const resText = r > w ? '赤勝ち' : (w > r ? '白勝ち' : '引分');
+                const resClass = r > w ? 'bg-red-100 text-red-700' : (w > r ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500');
+
+                const tr = document.createElement('tr');
+                tr.className = 'border-b';
+                tr.innerHTML = `
+                    <td class="p-2 font-bold text-center bg-slate-100 text-slate-700">${pName}</td>
+                    <td class="p-2 text-center font-bold text-red-600">${(pos.red || []).join(' ') || '-'}</td>
+                    <td class="p-2 text-center"><span class="text-[11px] px-2 py-0.5 font-bold rounded ${resClass}">${resText}</span></td>
+                    <td class="p-2 text-center font-bold text-indigo-800">${(pos.white || []).join(' ') || '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
