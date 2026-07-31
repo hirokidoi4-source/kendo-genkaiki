@@ -398,10 +398,21 @@
                     const redArr = Array.isArray(redVal) ? redVal : String(redVal).split(/\s+/);
                     const whiteArr = Array.isArray(whiteVal) ? whiteVal : String(whiteVal).split(/\s+/);
                     return {
-                        position: row.position || p,
-                        red: redArr.filter(Boolean),
-                        white: whiteArr.filter(Boolean),
-                        result: row.result || '引分'
+                        ...m,
+                        dbId: m.id || m.match_id || null,
+                        id: m.id || `${league}_m${index + 1}`,
+                        category: m.category || currentCategory,
+                        league,
+                        title,
+                        redTeam,
+                        whiteTeam,
+                        isFinished,
+                        scoreA: m.scoreA ?? m.redWins ?? m.red_wins ?? 0,
+                        scoreB: m.scoreB ?? m.whiteWins ?? m.white_wins ?? 0,
+                        // 🛡️ 追加: DBから直接届く「取得本数」のカラムも確実に取得・保持
+                        red_points: m.red_points ?? m.redPoints ?? m.red_score_total ?? 0,
+                        white_points: m.white_points ?? m.whitePoints ?? m.white_score_total ?? 0,
+                        positions: posData
                     };
                 }
                 return { position: p, red: [], white: [], result: '引分' };
@@ -480,10 +491,10 @@
 
             // ② 🛡️ 追加: 詳細データやDB保存スコアから正確な勝数・本数を集計して反映！
             const exact = calculateExactScore(m);
-            const redWins = exact.redWins || summary.redWins || m.scoreA || 0;
-            const whiteWins = exact.whiteWins || summary.whiteWins || m.scoreB || 0;
-            const redPts = exact.redPoints || summary.redTotalPts || m.red_points || 0;
-            const whitePts = exact.whitePoints || summary.whiteTotalPts || m.white_points || 0;
+            const redWins = exact.redWins || summary.redWins || m.scoreA || m.red_wins || 0;
+            const whiteWins = exact.whiteWins || summary.whiteWins || m.scoreB || m.white_wins || 0;
+            const redPts = exact.redPoints || summary.redTotalPts || m.red_points || m.redPoints || 0;
+            const whitePts = exact.whitePoints || summary.whiteTotalPts || m.white_points || m.whitePoints || 0;
 
             const isFinished = m.isFinished || (summary.status !== '未実施' && summary.hasInput) || (redWins > 0 || whiteWins > 0);
 
@@ -711,18 +722,26 @@
             teamB: match.whiteTeam,
             team_a: match.redTeam,
             team_b: match.whiteTeam,
+            // 🛡️ 勝数（あらゆるDBカラム名候補を網羅）
             scoreA: summary.redWins,
             scoreB: summary.whiteWins,
             score_a: summary.redWins,
             score_b: summary.whiteWins,
+            red_wins: summary.redWins,
+            white_wins: summary.whiteWins,
+            // 🛡️ 追加: 取得本数（0本表示を根絶するため、本数も明示的に送信）
+            red_points: summary.redTotalPts,
+            white_points: summary.whiteTotalPts,
+            redPoints: summary.redTotalPts,
+            whitePoints: summary.whiteTotalPts,
             status: 'finished',
-            // 🛡️ 個人内訳データの全方位送信（オブジェクト/配列/文字列型の全てに対応）
+            // 🛡️ 個人内訳データの全方位送信
             positions: match.positions,
             details: match.positions,
             match_details: match.positions,
             score_details: match.positions,
             results: match.positions,
-            details_json: JSON.stringify(match.positions), // DB側が文字列(TEXT)型の場合に対応
+            details_json: JSON.stringify(match.positions),
             isFinished: true,
             teamResult: summary.status
         };
