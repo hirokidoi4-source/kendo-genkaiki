@@ -163,6 +163,39 @@
             { headerBg: 'bg-orange-600', badge: 'bg-orange-100 text-orange-800 border-orange-300', cardBg: 'bg-orange-50/40 border-orange-200' }
         ];
 
+        // ==========================================
+        // 個人内訳(details/positions)を安全に復元するヘルパー関数
+        // ==========================================
+        function parsePositionsData(m) {
+            const defaultPosData = ['先鋒', '次鋒', '中堅', '副将', '大将'].map(p => ({
+                position: p, red: [], white: [], result: '引分'
+            }));
+
+            // 1. m.details が存在する場合
+            if (m.details) {
+                try {
+                    const rawDet = typeof m.details === 'string' ? JSON.parse(m.details) : m.details;
+                    if (Array.isArray(rawDet)) return rawDet;
+                    if (rawDet && Array.isArray(rawDet.order_list)) return rawDet.order_list;
+                } catch(e) {
+                    console.warn("detailsパースエラー:", e);
+                }
+            }
+
+            // 2. m.positions が存在する場合
+            if (m.positions) {
+                try {
+                    const rawPos = typeof m.positions === 'string' ? JSON.parse(m.positions) : m.positions;
+                    if (Array.isArray(rawPos)) return rawPos;
+                } catch(e) {
+                    console.warn("positionsパースエラー:", e);
+                }
+            }
+
+            // 3. どちらも無い場合はデフォルト値を返す
+            return defaultPosData;
+        }
+
         function initCategory() {
             const params = new URLSearchParams(window.location.search);
             const urlCat = params.get('category') || params.get('dept') || params.get('class');
@@ -242,6 +275,7 @@
                   }
 
                   const parsed = parseMatchData(m, idx);
+                  parsed.positions = parsePositionsData(m);
                   // LocalStorageに完了状態のスコアがあれば復元
                   const savedState = savedScoresMap.get(String(parsed.dbId)) || 
                                     savedScoresMap.get(`${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`);
@@ -347,12 +381,8 @@
             const redTeam = m.teamA || m.team_a || m.team1 || m.team1_name || m.red_team || m.redTeam || (m.teams && m.teams[0]) || '赤チーム';
             const whiteTeam = m.teamB || m.team_b || m.team2 || m.team2_name || m.white_team || m.whiteTeam || (m.teams && m.teams[1]) || '白チーム';
 
-            const posData = positions.map(p => ({
-                position: p,
-                red: [],
-                white: [],
-                result: '引分'
-            }));
+            // 💡 ★変更点1: 個人内訳を「details / positions どちらでも」「JSON文字列でも配列でも」安全に復元する
+            const parsedPositions = parsePositionsData(m);
 
             return {
                 dbId: m.id || m.match_id || null, // Supabaseのプライマリキー(数値ID等)
@@ -362,12 +392,15 @@
                 title,
                 redTeam,
                 whiteTeam,
-                isFinished: m.isFinished || m.status === 'finished' || m.status === '終了' || false,
-                scoreA: m.scoreA ?? m.redWins ?? 0,
-                scoreB: m.scoreB ?? m.whiteWins ?? 0,
-                positions: m.positions || posData
+                isFinished: m.isFinished || m.status === 'finished' || m.status === '終了' || m.status === 'completed' || false,
+                // 💡 ★変更点2: Supabaseのスネークケース (score_a / score_b) もチェック対象に追加！
+                scoreA: m.scoreA ?? m.score_a ?? m.redWins ?? 0,
+                scoreB: m.scoreB ?? m.score_b ?? m.whiteWins ?? 0,
+                positions: parsedPositions
             };
-        }        function renderMatchGroups() {
+        }     
+
+        function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
                 container.innerHTML = `
@@ -424,10 +457,16 @@
 
             if (isFinished) {
                 cardStyle = "match-card-finished border-slate-300";
-                if (summary.status === '赤勝ち') {
+
+                // 💡 ★修正ポイント: サーバーの確定スコア(scoreA / scoreB)を最優先で比較！
+                // 点数が同点(または両方0)のケースに備えて、フォールバックとして summary.status も考慮する安全設計
+                const isRedWin   = m.scoreA > m.scoreB || (m.scoreA === m.scoreB && summary.status === '赤勝ち');
+                const isWhiteWin = m.scoreB > m.scoreA || (m.scoreA === m.scoreB && summary.status === '白勝ち');
+
+                if (isRedWin) {
                     statusBadge = `<span class="inline-block bg-red-600 text-white text-xs px-3 py-1 rounded-full font-black shadow-sm">FINISHED (赤勝)</span>`;
                     winnerText = `<div class="text-xs font-black text-red-600 mt-1 truncate">🏆 勝者: ${m.redTeam}</div>`;
-                } else if (summary.status === '白勝ち') {
+                } else if (isWhiteWin) {
                     statusBadge = `<span class="inline-block bg-indigo-700 text-white text-xs px-3 py-1 rounded-full font-black shadow-sm">FINISHED (白勝)</span>`;
                     winnerText = `<div class="text-xs font-black text-indigo-800 mt-1 truncate">🏆 勝者: ${m.whiteTeam}</div>`;
                 } else {
