@@ -163,6 +163,39 @@
             { headerBg: 'bg-orange-600', badge: 'bg-orange-100 text-orange-800 border-orange-300', cardBg: 'bg-orange-50/40 border-orange-200' }
         ];
 
+        // =========================================================
+        // 🛡️ 追加: 詳細データから赤・白の「勝数」と「取得本数」を正確に集計する安全関数
+        // =========================================================
+        function calculateExactScore(match) {
+            let redWins = 0, whiteWins = 0;
+            let redPoints = 0, whitePoints = 0;
+
+            // 詳細データ（details または match_details）が存在する場合のみ内訳を計算
+            const details = match.details || match.match_details || [];
+            
+            if (Array.isArray(details) && details.length > 0) {
+                details.forEach(row => {
+                    // 本数の集計
+                    const rPts = (row.red_score || row.red_points || '').replace(/[^メコドツ▲◯]/g, '').length;
+                    const wPts = (row.white_score || row.white_points || '').replace(/[^メコドツ▲◯]/g, '').length;
+                    redPoints += rPts;
+                    whitePoints += wPts;
+
+                    // 勝敗の集計（赤勝ち・白勝ちの判定）
+                    if (row.winner === 'red' || rPts > wPts) redWins++;
+                    else if (row.winner === 'white' || wPts > rPts) whiteWins++;
+                });
+            } else {
+                // 詳細データがない場合は既存の親スコアをフォールバックとして使用
+                redWins = match.red_wins || 0;
+                whiteWins = match.white_wins || 0;
+                redPoints = match.red_points || 0;
+                whitePoints = match.white_points || 0;
+            }
+
+            return { redWins, whiteWins, redPoints, whitePoints };
+        }
+
         function initCategory() {
             const params = new URLSearchParams(window.location.search);
             const urlCat = params.get('category') || params.get('dept') || params.get('class');
@@ -355,6 +388,7 @@
             }));
 
             return {
+                ...m, // 🛡️ 追加: DBから届いた details や match_details を捨てずに全て保持！
                 dbId: m.id || m.match_id || null, // Supabaseのプライマリキー(数値ID等)
                 id: m.id || `${league}_m${index + 1}`,
                 category: m.category || currentCategory,
@@ -415,8 +449,17 @@
         }
 
         function renderMatchCardHtml(m, theme) {
+            // ① 基本のサマリー計算
             const summary = calculateTeamSummary(m.positions);
-            const isFinished = m.isFinished || (summary.status !== '未実施' && summary.hasInput);
+
+            // ② 🛡️ 追加: 詳細データやDB保存スコアから正確な勝数・本数を集計して反映！
+            const exact = calculateExactScore(m);
+            const redWins = exact.redWins || summary.redWins || m.scoreA || 0;
+            const whiteWins = exact.whiteWins || summary.whiteWins || m.scoreB || 0;
+            const redPts = exact.redPoints || summary.redTotalPts || m.red_points || 0;
+            const whitePts = exact.whitePoints || summary.whiteTotalPts || m.white_points || 0;
+
+            const isFinished = m.isFinished || (summary.status !== '未実施' && summary.hasInput) || (redWins > 0 || whiteWins > 0);
 
             let cardStyle = `${theme.cardBg}`;
             let statusBadge = `<span class="inline-block bg-white border border-slate-200 text-slate-600 text-xs px-3 py-1 rounded-full font-bold shadow-xs">タップして結果入力</span>`;
@@ -424,10 +467,10 @@
 
             if (isFinished) {
                 cardStyle = "match-card-finished border-slate-300";
-                if (summary.status === '赤勝ち') {
+                if (redWins > whiteWins) {
                     statusBadge = `<span class="inline-block bg-red-600 text-white text-xs px-3 py-1 rounded-full font-black shadow-sm">FINISHED (赤勝)</span>`;
                     winnerText = `<div class="text-xs font-black text-red-600 mt-1 truncate">🏆 勝者: ${m.redTeam}</div>`;
-                } else if (summary.status === '白勝ち') {
+                } else if (whiteWins > redWins) {
                     statusBadge = `<span class="inline-block bg-indigo-700 text-white text-xs px-3 py-1 rounded-full font-black shadow-sm">FINISHED (白勝)</span>`;
                     winnerText = `<div class="text-xs font-black text-indigo-800 mt-1 truncate">🏆 勝者: ${m.whiteTeam}</div>`;
                 } else {
@@ -445,12 +488,12 @@
                     <div class="flex justify-between items-center text-center my-3">
                         <div class="w-2/5">
                             <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.redTeam}</div>
-                            <div class="text-xs text-red-600 font-bold">赤 (${summary.redWins}勝/${summary.redTotalPts}本)</div>
+                            <div class="text-xs text-red-600 font-bold">赤 (${redWins}勝/${redPts}本)</div>
                         </div>
                         <div class="w-1/5 font-black text-base text-slate-300">VS</div>
                         <div class="w-2/5">
                             <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.whiteTeam}</div>
-                            <div class="text-xs text-slate-500 font-bold">白 (${summary.whiteWins}勝/${summary.whiteTotalPts}本)</div>
+                            <div class="text-xs text-slate-500 font-bold">白 (${whiteWins}勝/${whitePts}本)</div>
                         </div>
                     </div>
                     <div class="text-center pt-1">
