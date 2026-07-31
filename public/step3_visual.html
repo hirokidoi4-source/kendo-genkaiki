@@ -268,22 +268,27 @@
             let cleanMatches = [];
 
             if (rawMatches && rawMatches.length > 0) {
-              rawMatches.forEach((m, idx) => {
+             rawMatches.forEach((m, idx) => {
                   // 🛡️ 予選データ（preliminary または phase指定なし）のみを対象にし、決勝トーナメント（final）を画面から除外
-                  if (m.phase && m.phase !== 'preliminary') {
-                      return;
-                  }
+                  if (m.phase && m.phase !== 'preliminary') return;
 
                   const parsed = parseMatchData(m, idx);
-                  // LocalStorageに完了状態のスコアがあれば復元
-                  const savedState = savedScoresMap.get(String(parsed.dbId)) || 
-                                    savedScoresMap.get(`${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`);
-                  if (savedState && savedState.isFinished) {
-                      parsed.isFinished = true;
-                      parsed.positions = savedState.positions;
-                      parsed.scoreA = savedState.scoreA;
-                      parsed.scoreB = savedState.scoreB;
+
+                  // 🛡️ 修正: DB側にすでに入力データ（勝敗や内訳）がある場合は、それを100%最優先する
+                  const dbHasInput = parsed.positions && parsed.positions.some(row => row.red.length > 0 || row.white.length > 0);
+                  
+                  if (!dbHasInput) {
+                      // DB側が本当に空（未実施）の場合のみ、LocalStorageに完了状態があれば補完する
+                      const savedState = savedScoresMap.get(String(parsed.dbId)) || 
+                                         savedScoresMap.get(`${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`);
+                      if (savedState && savedState.isFinished) {
+                          parsed.isFinished = true;
+                          parsed.positions = savedState.positions;
+                          parsed.scoreA = savedState.scoreA;
+                          parsed.scoreB = savedState.scoreB;
+                      }
                   }
+
                   cleanMatches.push(parsed);
               });
             }          else {
@@ -363,11 +368,9 @@
         }
 
         function parseMatchData(m, index) {
-            // Aリーグ, Bリーグ 等の名称を抽出（title や league から優先判定）
             let rawLeague = m.league || m.league_name || m.stage || m.group_name || m.group || '';
             let league = 'Aリーグ';
             
-            // rawLeague や title から "Xリーグ" を検出
             const leagueMatch = (rawLeague + ' ' + (m.title || '')).match(/([A-ZＡ-Ｚa-zａ-ｚ1-9１-９]+リーグ)/);
             if (leagueMatch) {
                 league = leagueMatch[1];
@@ -376,32 +379,52 @@
             }
 
             let title = m.title || m.match_name || `第${index + 1}試合`;
-
             const redTeam = m.teamA || m.team_a || m.team1 || m.team1_name || m.red_team || m.redTeam || (m.teams && m.teams[0]) || '赤チーム';
             const whiteTeam = m.teamB || m.team_b || m.team2 || m.team2_name || m.white_team || m.whiteTeam || (m.teams && m.teams[1]) || '白チーム';
 
-            const posData = positions.map(p => ({
-                position: p,
-                red: [],
-                white: [],
-                result: '引分'
-            }));
+            // 🛡️ 追加・修正: データベースの details や positions を安全にパースして配列化
+            let rawPositions = m.positions || m.details || m.match_details || [];
+            if (typeof rawPositions === 'string') {
+                try { rawPositions = JSON.parse(rawPositions); } catch(e) { rawPositions = []; }
+            }
+
+            // 先鋒〜大将の5ポジションのデータを正確に正規化・復元
+            const posData = positions.map((p, idx) => {
+                const row = (Array.isArray(rawPositions) && rawPositions[idx]) ? rawPositions[idx] : null;
+                if (row && (row.red || row.white || row.red_score || row.white_score)) {
+                    const redArr = Array.isArray(row.red) ? row.red : (row.red_score ? String(row.red_score).split(/\s+/) : []);
+                    const whiteArr = Array.isArray(row.white) ? row.white : (row.white_score ? String(row.white_score).split(/\s+/) : []);
+                    return {
+                        position: row.position || p,
+                        red: redArr.filter(Boolean),
+                        white: whiteArr.filter(Boolean),
+                        result: row.result || '引分'
+                    };
+                }
+                return { position: p, red: [], white: [], result: '引分' };
+            });
+
+            // どちらかに入力があれば「実施済み」と判定
+            const hasInput = posData.some(row => row.red.length > 0 || row.white.length > 0);
+            const isFinished = m.isFinished || m.status === 'finished' || m.status === '終了' || hasInput;
 
             return {
-                ...m, // 🛡️ 追加: DBから届いた details や match_details を捨てずに全て保持！
-                dbId: m.id || m.match_id || null, // Supabaseのプライマリキー(数値ID等)
+                ...m,
+                dbId: m.id || m.match_id || null,
                 id: m.id || `${league}_m${index + 1}`,
                 category: m.category || currentCategory,
                 league,
                 title,
                 redTeam,
                 whiteTeam,
-                isFinished: m.isFinished || m.status === 'finished' || m.status === '終了' || false,
+                isFinished,
                 scoreA: m.scoreA ?? m.redWins ?? 0,
                 scoreB: m.scoreB ?? m.whiteWins ?? 0,
-                positions: m.positions || posData
+                positions: posData
             };
-        }        function renderMatchGroups() {
+        }
+
+        function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
                 container.innerHTML = `
@@ -691,6 +714,8 @@
             score_b: summary.whiteWins,
             status: 'finished',
             positions: match.positions,
+            details: match.positions,       // 🛡️ 追加: DBで details カラムを期待する場合にも確実に対応
+            match_details: match.positions, // 🛡️ 追加: match_details カラムを期待する場合にも対応
             isFinished: true,
             teamResult: summary.status
         };
