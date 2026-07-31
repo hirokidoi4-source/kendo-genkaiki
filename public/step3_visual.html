@@ -274,6 +274,12 @@
                       return;
                   }
 
+                  // 💡 ★ここに追加: 決勝トーナメント（〇回戦・準決勝・決勝など）を予選画面から安全に除外するガード
+                  const lgTitle = (m.league || '') + ' ' + (m.title || '') + ' ' + (m.stage || '');
+                  if (/[1-9１-９]回戦|準決勝|決勝|トーナメント/.test(lgTitle) && !lgTitle.includes('予選')) {
+                      return;
+                  }
+
                   const parsed = parseMatchData(m, idx);
                   parsed.positions = parsePositionsData(m);
                   // LocalStorageに完了状態のスコアがあれば復元

@@ -301,6 +301,14 @@
                 finalResultData = null;
             }
             loadTournamentData(keyName); // 👈 ★追加: 決勝トーナメントデータの安全な読み込み
+            loadTournamentData(keyName); // 👈 ★追加: 決勝トーナメントデータの安全な読み込み
+
+            // 💡 ★ここに追加: 予選リーグの画面から「決勝トーナメント系の試合」を除外する安全フィルター
+            spectatorMatches = spectatorMatches.filter(m => {
+                const lgTitle = (m.league || '') + ' ' + (m.title || '') + ' ' + (m.stage || '');
+                return !(/[1-9１-９]回戦|準決勝|決勝|トーナメント/.test(lgTitle) && !lgTitle.includes('予選'));
+            });
+
             renderSpectatorView();
         }
 
