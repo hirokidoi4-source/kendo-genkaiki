@@ -163,39 +163,6 @@
             { headerBg: 'bg-orange-600', badge: 'bg-orange-100 text-orange-800 border-orange-300', cardBg: 'bg-orange-50/40 border-orange-200' }
         ];
 
-        // =========================================================
-        // 🛡️ 追加: 詳細データから赤・白の「勝数」と「取得本数」を正確に集計する安全関数
-        // =========================================================
-        function calculateExactScore(match) {
-            let redWins = 0, whiteWins = 0;
-            let redPoints = 0, whitePoints = 0;
-
-            // 詳細データ（details または match_details）が存在する場合のみ内訳を計算
-            const details = match.details || match.match_details || [];
-            
-            if (Array.isArray(details) && details.length > 0) {
-                details.forEach(row => {
-                    // 本数の集計
-                    const rPts = (row.red_score || row.red_points || '').replace(/[^メコドツ▲◯]/g, '').length;
-                    const wPts = (row.white_score || row.white_points || '').replace(/[^メコドツ▲◯]/g, '').length;
-                    redPoints += rPts;
-                    whitePoints += wPts;
-
-                    // 勝敗の集計（赤勝ち・白勝ちの判定）
-                    if (row.winner === 'red' || rPts > wPts) redWins++;
-                    else if (row.winner === 'white' || wPts > rPts) whiteWins++;
-                });
-            } else {
-                // 詳細データがない場合は既存の親スコアをフォールバックとして使用
-                redWins = match.red_wins || 0;
-                whiteWins = match.white_wins || 0;
-                redPoints = match.red_points || 0;
-                whitePoints = match.white_points || 0;
-            }
-
-            return { redWins, whiteWins, redPoints, whitePoints };
-        }
-
         function initCategory() {
             const params = new URLSearchParams(window.location.search);
             const urlCat = params.get('category') || params.get('dept') || params.get('class');
@@ -268,27 +235,22 @@
             let cleanMatches = [];
 
             if (rawMatches && rawMatches.length > 0) {
-             rawMatches.forEach((m, idx) => {
+              rawMatches.forEach((m, idx) => {
                   // 🛡️ 予選データ（preliminary または phase指定なし）のみを対象にし、決勝トーナメント（final）を画面から除外
-                  if (m.phase && m.phase !== 'preliminary') return;
-
-                  const parsed = parseMatchData(m, idx);
-
-                  // 🛡️ 修正: DB側にすでに入力データ（勝敗や内訳）がある場合は、それを100%最優先する
-                  const dbHasInput = parsed.positions && parsed.positions.some(row => row.red.length > 0 || row.white.length > 0);
-                  
-                  if (!dbHasInput) {
-                      // DB側が本当に空（未実施）の場合のみ、LocalStorageに完了状態があれば補完する
-                      const savedState = savedScoresMap.get(String(parsed.dbId)) || 
-                                         savedScoresMap.get(`${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`);
-                      if (savedState && savedState.isFinished) {
-                          parsed.isFinished = true;
-                          parsed.positions = savedState.positions;
-                          parsed.scoreA = savedState.scoreA;
-                          parsed.scoreB = savedState.scoreB;
-                      }
+                  if (m.phase && m.phase !== 'preliminary') {
+                      return;
                   }
 
+                  const parsed = parseMatchData(m, idx);
+                  // LocalStorageに完了状態のスコアがあれば復元
+                  const savedState = savedScoresMap.get(String(parsed.dbId)) || 
+                                    savedScoresMap.get(`${currentCategory}_${parsed.league}_${parsed.redTeam}_${parsed.whiteTeam}`);
+                  if (savedState && savedState.isFinished) {
+                      parsed.isFinished = true;
+                      parsed.positions = savedState.positions;
+                      parsed.scoreA = savedState.scoreA;
+                      parsed.scoreB = savedState.scoreB;
+                  }
                   cleanMatches.push(parsed);
               });
             }          else {
@@ -368,9 +330,11 @@
         }
 
         function parseMatchData(m, index) {
+            // Aリーグ, Bリーグ 等の名称を抽出（title や league から優先判定）
             let rawLeague = m.league || m.league_name || m.stage || m.group_name || m.group || '';
             let league = 'Aリーグ';
             
+            // rawLeague や title から "Xリーグ" を検出
             const leagueMatch = (rawLeague + ' ' + (m.title || '')).match(/([A-ZＡ-Ｚa-zａ-ｚ1-9１-９]+リーグ)/);
             if (leagueMatch) {
                 league = leagueMatch[1];
@@ -379,66 +343,31 @@
             }
 
             let title = m.title || m.match_name || `第${index + 1}試合`;
+
             const redTeam = m.teamA || m.team_a || m.team1 || m.team1_name || m.red_team || m.redTeam || (m.teams && m.teams[0]) || '赤チーム';
             const whiteTeam = m.teamB || m.team_b || m.team2 || m.team2_name || m.white_team || m.whiteTeam || (m.teams && m.teams[1]) || '白チーム';
 
-            // 🛡️ 強化: あらゆる候補キーから個人スコア（内訳）の配列/文字列を取得・パース
-            let rawPositions = m.positions || m.details || m.match_details || m.score_details || m.results || m.details_json || [];
-            if (typeof rawPositions === 'string') {
-                try { rawPositions = JSON.parse(rawPositions); } catch(e) { rawPositions = []; }
-            }
-
-            // 先鋒〜大将の5ポジションの内訳データを確実に正規化・自己修復
-            const posData = positions.map((p, idx) => {
-                const row = (Array.isArray(rawPositions) && rawPositions[idx]) ? rawPositions[idx] : null;
-                if (row && (row.red || row.white || row.red_score || row.white_score || row.red_points || row.white_points)) {
-                    // 赤・白それぞれの部位データ配列を取得（文字列スペース区切りにも対応）
-                    const redVal = row.red || row.red_score || row.red_points || [];
-                    const whiteVal = row.white || row.white_score || row.white_points || [];
-                    const redArr = Array.isArray(redVal) ? redVal : String(redVal).split(/\s+/);
-                    const whiteArr = Array.isArray(whiteVal) ? whiteVal : String(whiteVal).split(/\s+/);
-                    return {
-                        ...m,
-                        dbId: m.id || m.match_id || null,
-                        id: m.id || `${league}_m${index + 1}`,
-                        category: m.category || currentCategory,
-                        league,
-                        title,
-                        redTeam,
-                        whiteTeam,
-                        isFinished,
-                        scoreA: m.scoreA ?? m.redWins ?? m.red_wins ?? 0,
-                        scoreB: m.scoreB ?? m.whiteWins ?? m.white_wins ?? 0,
-                        // 🛡️ 追加: DBから直接届く「取得本数」のカラムも確実に取得・保持
-                        red_points: m.red_points ?? m.redPoints ?? m.red_score_total ?? 0,
-                        white_points: m.white_points ?? m.whitePoints ?? m.white_score_total ?? 0,
-                        positions: posData
-                    };
-                }
-                return { position: p, red: [], white: [], result: '引分' };
-            });
-
-            // どちらかのポジションに入力があれば「実施済み」と判定
-            const hasInput = posData.some(row => row.red.length > 0 || row.white.length > 0);
-            const isFinished = m.isFinished || m.status === 'finished' || m.status === '終了' || hasInput;
+            const posData = positions.map(p => ({
+                position: p,
+                red: [],
+                white: [],
+                result: '引分'
+            }));
 
             return {
-                ...m,
-                dbId: m.id || m.match_id || null,
+                dbId: m.id || m.match_id || null, // Supabaseのプライマリキー(数値ID等)
                 id: m.id || `${league}_m${index + 1}`,
                 category: m.category || currentCategory,
                 league,
                 title,
                 redTeam,
                 whiteTeam,
-                isFinished,
+                isFinished: m.isFinished || m.status === 'finished' || m.status === '終了' || false,
                 scoreA: m.scoreA ?? m.redWins ?? 0,
                 scoreB: m.scoreB ?? m.whiteWins ?? 0,
-                positions: posData
+                positions: m.positions || posData
             };
-        }
-
-        function renderMatchGroups() {
+        }        function renderMatchGroups() {
             const container = document.getElementById('matchesContainer');
             if (!matchesList || matchesList.length === 0) {
                 container.innerHTML = `
@@ -486,17 +415,8 @@
         }
 
         function renderMatchCardHtml(m, theme) {
-            // ① 基本のサマリー計算
             const summary = calculateTeamSummary(m.positions);
-
-            // ② 🛡️ 追加: 詳細データやDB保存スコアから正確な勝数・本数を集計して反映！
-            const exact = calculateExactScore(m);
-            const redWins = exact.redWins || summary.redWins || m.scoreA || m.red_wins || 0;
-            const whiteWins = exact.whiteWins || summary.whiteWins || m.scoreB || m.white_wins || 0;
-            const redPts = exact.redPoints || summary.redTotalPts || m.red_points || m.redPoints || 0;
-            const whitePts = exact.whitePoints || summary.whiteTotalPts || m.white_points || m.whitePoints || 0;
-
-            const isFinished = m.isFinished || (summary.status !== '未実施' && summary.hasInput) || (redWins > 0 || whiteWins > 0);
+            const isFinished = m.isFinished || (summary.status !== '未実施' && summary.hasInput);
 
             let cardStyle = `${theme.cardBg}`;
             let statusBadge = `<span class="inline-block bg-white border border-slate-200 text-slate-600 text-xs px-3 py-1 rounded-full font-bold shadow-xs">タップして結果入力</span>`;
@@ -504,10 +424,10 @@
 
             if (isFinished) {
                 cardStyle = "match-card-finished border-slate-300";
-                if (redWins > whiteWins) {
+                if (summary.status === '赤勝ち') {
                     statusBadge = `<span class="inline-block bg-red-600 text-white text-xs px-3 py-1 rounded-full font-black shadow-sm">FINISHED (赤勝)</span>`;
                     winnerText = `<div class="text-xs font-black text-red-600 mt-1 truncate">🏆 勝者: ${m.redTeam}</div>`;
-                } else if (whiteWins > redWins) {
+                } else if (summary.status === '白勝ち') {
                     statusBadge = `<span class="inline-block bg-indigo-700 text-white text-xs px-3 py-1 rounded-full font-black shadow-sm">FINISHED (白勝)</span>`;
                     winnerText = `<div class="text-xs font-black text-indigo-800 mt-1 truncate">🏆 勝者: ${m.whiteTeam}</div>`;
                 } else {
@@ -525,12 +445,12 @@
                     <div class="flex justify-between items-center text-center my-3">
                         <div class="w-2/5">
                             <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.redTeam}</div>
-                            <div class="text-xs text-red-600 font-bold">赤 (${redWins}勝/${redPts}本)</div>
+                            <div class="text-xs text-red-600 font-bold">赤 (${summary.redWins}勝/${summary.redTotalPts}本)</div>
                         </div>
                         <div class="w-1/5 font-black text-base text-slate-300">VS</div>
                         <div class="w-2/5">
                             <div class="font-black text-sm sm:text-base text-slate-800 truncate">${m.whiteTeam}</div>
-                            <div class="text-xs text-slate-500 font-bold">白 (${whiteWins}勝/${whitePts}本)</div>
+                            <div class="text-xs text-slate-500 font-bold">白 (${summary.whiteWins}勝/${summary.whiteTotalPts}本)</div>
                         </div>
                     </div>
                     <div class="text-center pt-1">
@@ -709,7 +629,7 @@
 
         const targetId = match.dbId || match.id;
 
-        // バックエンドが期待しうる主要な内訳カラム名やJSON文字列型を完全網羅して送信
+        // Supabaseが要求するフィールド名（teamA, team_a, scoreA, score_a 等）を網羅
         const payload = {
             id: targetId,
             match_id: targetId,
@@ -722,26 +642,12 @@
             teamB: match.whiteTeam,
             team_a: match.redTeam,
             team_b: match.whiteTeam,
-            // 🛡️ 勝数（あらゆるDBカラム名候補を網羅）
             scoreA: summary.redWins,
             scoreB: summary.whiteWins,
             score_a: summary.redWins,
             score_b: summary.whiteWins,
-            red_wins: summary.redWins,
-            white_wins: summary.whiteWins,
-            // 🛡️ 追加: 取得本数（0本表示を根絶するため、本数も明示的に送信）
-            red_points: summary.redTotalPts,
-            white_points: summary.whiteTotalPts,
-            redPoints: summary.redTotalPts,
-            whitePoints: summary.whiteTotalPts,
             status: 'finished',
-            // 🛡️ 個人内訳データの全方位送信
             positions: match.positions,
-            details: match.positions,
-            match_details: match.positions,
-            score_details: match.positions,
-            results: match.positions,
-            details_json: JSON.stringify(match.positions),
             isFinished: true,
             teamResult: summary.status
         };
