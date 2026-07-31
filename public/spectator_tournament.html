@@ -257,38 +257,64 @@
         }
 
 
-        // 👈 ★差し替え: 試合ID(id)で安全に呼び出すカード関数
+        // 👈 ★差し替え: 通常勝利は「緑の[勝]」、代表戦は「オレンジの[代表勝]」で明確に仕分けるカード関数
         function renderCard(m) {
             const teamA = m.teamA || m.redTeam || m.team1 || '未定';
             const teamB = m.teamB || m.whiteTeam || m.team2 || '未定';
-            const scoreA = (m.scoreA !== undefined && m.scoreA !== null) ? m.scoreA : 0;
-            const scoreB = (m.scoreB !== undefined && m.scoreB !== null) ? m.scoreB : 0;
+            const scoreA = (m.scoreA !== undefined && m.scoreA !== null) ? Number(m.scoreA) : 0;
+            const scoreB = (m.scoreB !== undefined && m.scoreB !== null) ? Number(m.scoreB) : 0;
 
             const isFinished = m.status === 'finished' || (scoreA > 0 || scoreB > 0);
-            const winA = isFinished && (scoreA > scoreB);
-            const winB = isFinished && (scoreB > scoreA);
 
-            // _idx ではなく m.id を第一引数にして確実に特定できるように修正
+            // 💡 ★厳密化: 本当に「代表戦」での決着かを判定
+            // (1) details.repWinner が有効、または (2) 0-0等で同点なのに details.winnerTeam が指定されている場合
+            const repWinnerTeam = m.details?.winnerTeam || m.details?.repWinner || '';
+            const isTieScore = (scoreA === scoreB);
+            const isRepMatch = isFinished && repWinnerTeam !== '' && (m.details?.repWinner || isTieScore);
+
+            // 💡 勝者判定: 通常のスコア差、または代表戦勝者と一致する場合
+            const winA = isFinished && ((scoreA > scoreB) || (isRepMatch && repWinnerTeam === teamA));
+            const winB = isFinished && ((scoreB > scoreA) || (isRepMatch && repWinnerTeam === teamB));
+
+            // 💡 右上バッジ: 代表戦のときだけオレンジ色で警告表示
+            let statusBadgeHtml = `<span class="text-[10px] px-2 py-0.5 rounded font-bold ${isFinished ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'}">${isFinished ? '試合終了' : '試合前'}</span>`;
+            if (isRepMatch) {
+                statusBadgeHtml = `<span class="text-[10px] px-2 py-0.5 rounded font-black bg-amber-100 text-amber-800 border border-amber-300">⚠️ 代表戦決着</span>`;
+            }
+
+            // 💡 チーム名横の勝ちバッジ生成関数（代表戦=オレンジ、通常勝利=エメラルド緑）
+            const getWinBadgeHtml = (isWinner) => {
+                if (!isWinner) return '';
+                if (isRepMatch) {
+                    return `<span class="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-black ml-1.5 shadow-sm shrink-0">代表勝</span>`;
+                }
+                return `<span class="text-[10px] bg-emerald-600 text-white px-1.5 py-0.5 rounded font-black ml-1.5 shadow-sm shrink-0">勝</span>`;
+            };
+
             return `
                 <div onclick="openMatchModal('${m.id || ''}', ${m._idx})" class="bg-white rounded-xl p-3.5 border border-slate-200/80 shadow-sm transition-all cursor-pointer hover:border-indigo-500 hover:shadow-md hover:-translate-y-0.5">
-                    <!-- 試合名 -->
+                    <!-- 試合名 & バッジ -->
                     <div class="flex justify-between items-center mb-2 pb-1 border-b border-slate-100">
                         <span class="text-[11px] font-bold text-slate-500">${m.title || ''}</span>
-                        <span class="text-[10px] px-2 py-0.5 rounded font-bold ${isFinished ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'}">
-                            ${isFinished ? '試合終了' : '試合前'}
-                        </span>
+                        ${statusBadgeHtml}
                     </div>
 
                     <!-- チームA -->
                     <div class="flex justify-between items-center py-1 ${winA ? 'font-black text-indigo-950' : 'text-slate-700'}">
-                        <span class="text-sm truncate pr-2">${teamA}</span>
-                        <span class="text-sm font-bold ${winA ? 'text-amber-600' : ''}">${scoreA}</span>
+                        <span class="text-sm truncate pr-1 flex items-center">
+                            <span class="truncate">${teamA}</span>
+                            ${getWinBadgeHtml(winA)}
+                        </span>
+                        <span class="text-sm font-bold ml-2 ${winA ? (isRepMatch ? 'text-amber-600' : 'text-emerald-700') : ''}">${scoreA}</span>
                     </div>
 
                     <!-- チームB -->
                     <div class="flex justify-between items-center py-1 ${winB ? 'font-black text-indigo-950' : 'text-slate-700'}">
-                        <span class="text-sm truncate pr-2">${teamB}</span>
-                        <span class="text-sm font-bold ${winB ? 'text-amber-600' : ''}">${scoreB}</span>
+                        <span class="text-sm truncate pr-1 flex items-center">
+                            <span class="truncate">${teamB}</span>
+                            ${getWinBadgeHtml(winB)}
+                        </span>
+                        <span class="text-sm font-bold ml-2 ${winB ? (isRepMatch ? 'text-amber-600' : 'text-emerald-700') : ''}">${scoreB}</span>
                     </div>
                 </div>
             `;
