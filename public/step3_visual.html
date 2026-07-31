@@ -382,18 +382,21 @@
             const redTeam = m.teamA || m.team_a || m.team1 || m.team1_name || m.red_team || m.redTeam || (m.teams && m.teams[0]) || '赤チーム';
             const whiteTeam = m.teamB || m.team_b || m.team2 || m.team2_name || m.white_team || m.whiteTeam || (m.teams && m.teams[1]) || '白チーム';
 
-            // 🛡️ 追加・修正: データベースの details や positions を安全にパースして配列化
-            let rawPositions = m.positions || m.details || m.match_details || [];
+            // 🛡️ 強化: あらゆる候補キーから個人スコア（内訳）の配列/文字列を取得・パース
+            let rawPositions = m.positions || m.details || m.match_details || m.score_details || m.results || m.details_json || [];
             if (typeof rawPositions === 'string') {
                 try { rawPositions = JSON.parse(rawPositions); } catch(e) { rawPositions = []; }
             }
 
-            // 先鋒〜大将の5ポジションのデータを正確に正規化・復元
+            // 先鋒〜大将の5ポジションの内訳データを確実に正規化・自己修復
             const posData = positions.map((p, idx) => {
                 const row = (Array.isArray(rawPositions) && rawPositions[idx]) ? rawPositions[idx] : null;
-                if (row && (row.red || row.white || row.red_score || row.white_score)) {
-                    const redArr = Array.isArray(row.red) ? row.red : (row.red_score ? String(row.red_score).split(/\s+/) : []);
-                    const whiteArr = Array.isArray(row.white) ? row.white : (row.white_score ? String(row.white_score).split(/\s+/) : []);
+                if (row && (row.red || row.white || row.red_score || row.white_score || row.red_points || row.white_points)) {
+                    // 赤・白それぞれの部位データ配列を取得（文字列スペース区切りにも対応）
+                    const redVal = row.red || row.red_score || row.red_points || [];
+                    const whiteVal = row.white || row.white_score || row.white_points || [];
+                    const redArr = Array.isArray(redVal) ? redVal : String(redVal).split(/\s+/);
+                    const whiteArr = Array.isArray(whiteVal) ? whiteVal : String(whiteVal).split(/\s+/);
                     return {
                         position: row.position || p,
                         red: redArr.filter(Boolean),
@@ -404,7 +407,7 @@
                 return { position: p, red: [], white: [], result: '引分' };
             });
 
-            // どちらかに入力があれば「実施済み」と判定
+            // どちらかのポジションに入力があれば「実施済み」と判定
             const hasInput = posData.some(row => row.red.length > 0 || row.white.length > 0);
             const isFinished = m.isFinished || m.status === 'finished' || m.status === '終了' || hasInput;
 
@@ -695,7 +698,7 @@
 
         const targetId = match.dbId || match.id;
 
-        // Supabaseが要求するフィールド名（teamA, team_a, scoreA, score_a 等）を網羅
+        // バックエンドが期待しうる主要な内訳カラム名やJSON文字列型を完全網羅して送信
         const payload = {
             id: targetId,
             match_id: targetId,
@@ -713,9 +716,13 @@
             score_a: summary.redWins,
             score_b: summary.whiteWins,
             status: 'finished',
+            // 🛡️ 個人内訳データの全方位送信（オブジェクト/配列/文字列型の全てに対応）
             positions: match.positions,
-            details: match.positions,       // 🛡️ 追加: DBで details カラムを期待する場合にも確実に対応
-            match_details: match.positions, // 🛡️ 追加: match_details カラムを期待する場合にも対応
+            details: match.positions,
+            match_details: match.positions,
+            score_details: match.positions,
+            results: match.positions,
+            details_json: JSON.stringify(match.positions), // DB側が文字列(TEXT)型の場合に対応
             isFinished: true,
             teamResult: summary.status
         };
